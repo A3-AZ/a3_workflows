@@ -1,0 +1,7 @@
+mainprefix = "z"
+prefix = "tst"
+
+name = "Test Mod"
+
+[version]
+prefix = "not_this"

@@ -1,0 +1,112 @@
+# Tests validate_stringtable: unit tests of the script, the action against real mods, and a broken fixture that must fail.
+
+name: "Test: validate_stringtable"
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'validate_stringtable/**'
+      - '.github/workflows/test_validate_stringtable.yml'
+  pull_request:
+    paths:
+      - 'validate_stringtable/**'
+      - '.github/workflows/test_validate_stringtable.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  unit:
+    name: Unit tests
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout the source code
+        uses: actions/checkout@v7
+
+      - name: Run unit tests
+        run: python3 -m unittest discover -v -s validate_stringtable/tests
+
+  mods:
+    name: Real mod (${{ matrix.mod.repository }})
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        mod:
+          # Pinned commits, so a change in a mod does not break this test
+          - repository: andx667/arma-mod-template
+            ref: 199671f80f784b82cc3b87fa889c2fb4270cd74f
+            case-sensitive: 'true'
+            skip-checks: ''
+            exclude: ''
+          - repository: OverlordZorn/ZRN-Mod-Template
+            ref: 8d52b14163444a75b656cc7af233620bea43f5d5
+            case-sensitive: 'false'
+            skip-checks: ''
+            exclude: ''
+          # Project names differ from the prefix; deploy and team have a Package name that is not the folder name
+          - repository: CVO-Org/Zorns-Mission-Utility-Mod
+            ref: 459970e1005e5c3d70472549f844a422f3cf2d8c
+            case-sensitive: 'false'
+            skip-checks: 'project-name'
+            exclude: |
+              addons/deploy
+              addons/team
+    steps:
+      - name: Checkout the source code
+        uses: actions/checkout@v7
+
+      - name: Checkout the mod
+        uses: actions/checkout@v7
+        with:
+          repository: ${{ matrix.mod.repository }}
+          ref: ${{ matrix.mod.ref }}
+          path: mod
+
+      - name: Validate stringtables
+        uses: ./validate_stringtable
+        with:
+          path: mod
+          case-sensitive: ${{ matrix.mod.case-sensitive }}
+          skip-checks: ${{ matrix.mod.skip-checks }}
+          exclude: ${{ matrix.mod.exclude }}
+
+  fixtures:
+    name: Fixtures
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout the source code
+        uses: actions/checkout@v7
+
+      - name: Valid fixture passes
+        uses: ./validate_stringtable
+        with:
+          path: validate_stringtable/tests/fixtures/valid
+
+      - name: Broken fixture
+        id: broken
+        continue-on-error: true
+        uses: ./validate_stringtable
+        with:
+          path: validate_stringtable/tests/fixtures/broken
+
+      - name: Broken fixture must fail
+        if: steps.broken.outcome != 'failure'
+        run: |
+          echo "::error title=test_validate_stringtable::The broken fixture passed validation (outcome: ${{ steps.broken.outcome }})."
+          exit 1
+
+      - name: Invalid input
+        id: bad-input
+        continue-on-error: true
+        uses: ./validate_stringtable
+        with:
+          path: validate_stringtable/tests/fixtures/valid
+          case-sensitive: 'maybe'
+
+      - name: Invalid input must fail
+        if: steps.bad-input.outcome != 'failure'
+        run: |
+          echo "::error title=test_validate_stringtable::case-sensitive 'maybe' was accepted."
+          exit 1

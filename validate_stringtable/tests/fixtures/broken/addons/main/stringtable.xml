@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project name="wrong">
+    <Package name="other">
+        <Key ID="STR_tst_other_ok">
+            <English>Fine</English>
+        </Key>
+        <Key ID="STR_xyz_other_prefix">
+            <English>Wrong prefix</English>
+        </Key>
+        <Key ID="STR_tst_other_order">
+            <German>Deutsch zuerst</German>
+            <English>English second</English>
+        </Key>
+        <Key ID="STR_tst_other_original">
+            <English>Has original</English>
+            <Original>Original</Original>
+        </Key>
+        <Key ID="STR_tst_other_twice">
+            <English>One</English>
+            <English>Two</English>
+        </Key>
+        <Key ID="STR_tst_other_ok">
+            <English>Duplicate key</English>
+        </Key>
+        <Key ID="STR_tst_other_empty">
+        </Key>
+		<Key ID="STR_tst_other_tab">
+            <English>Tab indent</English>
+        </Key>
+      <Key ID="STR_tst_other_indent">
+            <English>Six spaces</English>
+        </Key>
+    </Package>
+</Project>

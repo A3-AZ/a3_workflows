@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project name="tst">
+    <Package name="main">
+        <Key ID="STR_tst_main_name">
+            <English>Test Mod</English>
+            <German>Testmod</German>
+        </Key>
+        <Container name="Settings">
+            <Key ID="STR_tst_main_setting">
+                <English>Setting</English>
+            </Key>
+        </Container>
+    </Package>
+</Project>

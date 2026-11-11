@@ -1,0 +1,56 @@
+# Composite action: checks the stringtable.xml files of an Arma 3 mod.
+# Documentation and the wrapper to copy into a mod repository: validate_stringtable/README.md
+
+name: "Validate: Stringtable"
+description: Checks the stringtable.xml files of an Arma 3 mod for structure, key names, duplicates, language order and whitespace.
+
+inputs:
+  path:
+    description: Directory searched for stringtable.xml files, relative to the workspace. Also where .hemtt/project.toml is read from.
+    required: false
+    default: '.'
+  prefix:
+    description: Project prefix used for the Project name and the key IDs (STR_<prefix>_<package>_...). Empty = 'prefix' from .hemtt/project.toml.
+    required: false
+    default: ''
+  exclude:
+    description: Glob patterns of paths to skip, relative to path, one per line (e.g. 'include/*'). .git and .hemttout are always skipped.
+    required: false
+    default: ''
+  skip-checks:
+    description: "Checks to turn off, comma- or space-separated: project-name, package-name, key-prefix, english-first, no-original, whitespace."
+    required: false
+    default: ''
+  case-sensitive:
+    description: Compare key IDs with the expected STR_<prefix>_<package>_ prefix and with each other case-sensitively. 'false' accepts e.g. Package 'Main' with keys 'STR_x_main_...'.
+    required: false
+    default: 'true'
+
+runs:
+  using: composite
+  steps:
+    - name: Validate stringtables
+      shell: bash
+      env:
+        INPUT_PATH: ${{ inputs.path }}
+        INPUT_PREFIX: ${{ inputs.prefix }}
+        INPUT_EXCLUDE: ${{ inputs.exclude }}
+        INPUT_SKIP_CHECKS: ${{ inputs.skip-checks }}
+        INPUT_CASE_SENSITIVE: ${{ inputs.case-sensitive }}
+        SCRIPT: ${{ github.action_path }}/scripts/stringtable_validator.py
+      run: |
+        set -euo pipefail
+        fail() { echo "::error title=validate_stringtable::$1"; exit 1; }
+
+        [ -d "$INPUT_PATH" ] || fail "Input path '$INPUT_PATH' is not a directory. Did the wrapper check out the repository?"
+        args=(--root "$INPUT_PATH" --prefix "$INPUT_PREFIX" --skip "$INPUT_SKIP_CHECKS")
+        case "$INPUT_CASE_SENSITIVE" in
+          true) ;;
+          false) args+=(--case-insensitive) ;;
+          *) fail "Input case-sensitive must be 'true' or 'false', got '$INPUT_CASE_SENSITIVE'." ;;
+        esac
+        while IFS= read -r pattern; do
+          if [ -n "${pattern//[[:space:]]/}" ]; then args+=(--exclude "$pattern"); fi
+        done <<< "$INPUT_EXCLUDE"
+
+        python3 "$SCRIPT" "${args[@]}"

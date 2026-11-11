@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project name="tst">
+    <Package name="Common">
+        <Key ID="STR_tst_Common_crlf">
+            <English>Windows line endings</English>
+        </Key>
+    </Package>
+</Project>
