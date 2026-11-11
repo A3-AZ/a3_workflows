@@ -21,10 +21,6 @@ inputs:
     description: Extra arguments for hemtt check, e.g. '--pedantic'. Split on spaces.
     required: false
     default: ''
-  fill-template-placeholders:
-    description: Replace the mod template placeholders (~MAINPREFIX~ -> z, ~PREFIX~ -> tmpl) before the check. Only for the template repository itself.
-    required: false
-    default: 'false'
   github-token:
     description: Token for authenticated GitHub API requests when HEMTT is downloaded, to avoid rate limits.
     required: false
@@ -37,35 +33,11 @@ runs:
       shell: bash
       env:
         WORKDIR: ${{ inputs.working-directory }}
-        FILL: ${{ inputs.fill-template-placeholders }}
       run: |
         set -euo pipefail
         fail() { echo "::error title=validate_hemtt::$1"; exit 1; }
         [ -d "$WORKDIR" ] || fail "working-directory '$WORKDIR' does not exist. Did the job check out the code (actions/checkout) before this action?"
         [ -f "$WORKDIR/.hemtt/project.toml" ] || fail "No .hemtt/project.toml in '$WORKDIR'. Check out the code before this action and point working-directory at the HEMTT project."
-        case "$FILL" in
-          true|false) ;;
-          *) fail "fill-template-placeholders must be 'true' or 'false', got '$FILL'." ;;
-        esac
-
-    - name: Fill template placeholders
-      if: inputs.fill-template-placeholders == 'true'
-      shell: bash
-      working-directory: ${{ inputs.working-directory }}
-      # "~" is not valid in class names, so the raw template can't pass hemtt check.
-      # The placeholders are assembled from T on purpose, so the "find and replace" during
-      # mod setup does not alter this step if it is ever copied into a template.
-      run: |
-        set -euo pipefail
-        T='~'
-        files=$(grep -rlI --exclude-dir=.git --exclude-dir=include -e "${T}MAINPREFIX${T}" -e "${T}PREFIX${T}" . || true)
-        if [ -n "$files" ]; then
-          echo "Template placeholders found, filling them in for this check:"
-          echo "$files"
-          echo "$files" | xargs sed -i "s/${T}MAINPREFIX${T}/z/g; s/${T}PREFIX${T}/tmpl/g"
-        else
-          echo "No template placeholders found - nothing to fill."
-        fi
 
     - name: Setup HEMTT
       uses: arma-actions/hemtt@v1

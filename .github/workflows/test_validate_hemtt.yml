@@ -25,12 +25,10 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - name: ZRN-Mod-Template, placeholders filled
-            repository: OverlordZorn/ZRN-Mod-Template
-            fill: 'true'
           - name: andx667/arma-mod-template
             repository: andx667/arma-mod-template
-            fill: 'false'
+          - name: Zorns-Mission-Utility-Mod
+            repository: CVO-Org/Zorns-Mission-Utility-Mod
     steps:
       - name: Checkout a3_workflows
         uses: actions/checkout@v7
@@ -45,7 +43,6 @@ jobs:
         uses: ./validate_hemtt
         with:
           working-directory: mod
-          fill-template-placeholders: ${{ matrix.fill }}
 
   fail:
     name: Fail (${{ matrix.name }})
@@ -56,17 +53,14 @@ jobs:
         include:
           - name: raw template placeholders
             repository: OverlordZorn/ZRN-Mod-Template
-            fill: 'false'
             break: 'false'
             working-directory: mod
           - name: broken config.cpp
             repository: andx667/arma-mod-template
-            fill: 'false'
             break: 'true'
             working-directory: mod
           - name: missing project folder
             repository: andx667/arma-mod-template
-            fill: 'false'
             break: 'false'
             working-directory: does-not-exist
     steps:
@@ -89,7 +83,6 @@ jobs:
         uses: ./validate_hemtt
         with:
           working-directory: ${{ matrix.working-directory }}
-          fill-template-placeholders: ${{ matrix.fill }}
 
       - name: Assert the action failed
         env:

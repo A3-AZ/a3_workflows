@@ -80,6 +80,8 @@ Every workflow folder has a README with these sections, in this order:
 
 Secrets are always passed explicitly from the wrapper (`with: steam-password: ${{ secrets.STEAM_PASSWORD }}`). `secrets: inherit` does not work across organizations, and explicit secrets make clear which workflow receives what.
 
+**In a mod template repository**, the wrappers are there to be copied, not to run - the template has no real mod to check, label or release. Give each job `if: github.repository != '<owner>/<template>'`: the template skips them, and every mod created from it runs them without further changes.
+
 ## Versioning
 
 Releases follow [semantic versioning](https://semver.org) for the repository as a whole: `v1.0.0`, `v1.1.0`, `v1.1.1`, ...
