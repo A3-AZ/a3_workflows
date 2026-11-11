@@ -1,0 +1,102 @@
+# CI of this repository: tests validate_hemtt against real mod template repositories.
+# Positive cases must pass, negative cases must make the action fail.
+
+name: "Test: validate_hemtt"
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - validate_hemtt/**
+      - .github/workflows/test_validate_hemtt.yml
+  pull_request:
+    paths:
+      - validate_hemtt/**
+      - .github/workflows/test_validate_hemtt.yml
+
+permissions:
+  contents: read
+
+jobs:
+  pass:
+    name: Pass (${{ matrix.name }})
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: ZRN-Mod-Template, placeholders filled
+            repository: OverlordZorn/ZRN-Mod-Template
+            fill: 'true'
+          - name: andx667/arma-mod-template
+            repository: andx667/arma-mod-template
+            fill: 'false'
+    steps:
+      - name: Checkout a3_workflows
+        uses: actions/checkout@v7
+
+      - name: Checkout the mod
+        uses: actions/checkout@v7
+        with:
+          repository: ${{ matrix.repository }}
+          path: mod
+
+      - name: Validate HEMTT
+        uses: ./validate_hemtt
+        with:
+          working-directory: mod
+          fill-template-placeholders: ${{ matrix.fill }}
+
+  fail:
+    name: Fail (${{ matrix.name }})
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: raw template placeholders
+            repository: OverlordZorn/ZRN-Mod-Template
+            fill: 'false'
+            break: 'false'
+            working-directory: mod
+          - name: broken config.cpp
+            repository: andx667/arma-mod-template
+            fill: 'false'
+            break: 'true'
+            working-directory: mod
+          - name: missing project folder
+            repository: andx667/arma-mod-template
+            fill: 'false'
+            break: 'false'
+            working-directory: does-not-exist
+    steps:
+      - name: Checkout a3_workflows
+        uses: actions/checkout@v7
+
+      - name: Checkout the mod
+        uses: actions/checkout@v7
+        with:
+          repository: ${{ matrix.repository }}
+          path: mod
+
+      - name: Break config.cpp
+        if: matrix.break == 'true'
+        run: printf '\nclass Broken {\n' >> mod/addons/main/config.cpp
+
+      - name: Validate HEMTT (expected to fail)
+        id: validate
+        continue-on-error: true
+        uses: ./validate_hemtt
+        with:
+          working-directory: ${{ matrix.working-directory }}
+          fill-template-placeholders: ${{ matrix.fill }}
+
+      - name: Assert the action failed
+        env:
+          OUTCOME: ${{ steps.validate.outcome }}
+        run: |
+          if [ "$OUTCOME" != "failure" ]; then
+            echo "::error title=test_validate_hemtt::Expected validate_hemtt to fail, but the outcome was '$OUTCOME'."
+            exit 1
+          fi
+          echo "validate_hemtt failed as expected."
