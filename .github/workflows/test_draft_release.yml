@@ -1,0 +1,166 @@
+# Tests draft_release/ against this repository: config loading in dry-run, plus one real draft that is deleted again.
+
+name: "Test: draft_release"
+
+on:
+  pull_request:
+    paths:
+      - draft_release/**
+      - .github/workflows/test_draft_release.yml
+  push:
+    branches: [main]
+    paths:
+      - draft_release/**
+      - .github/workflows/test_draft_release.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pull-requests: read
+
+env:
+  # Commit under test - the pull request head, not the temporary merge commit
+  TEST_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+
+jobs:
+  example-config:
+    name: Example config (dry-run)
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout the source code
+        uses: actions/checkout@v7
+
+      - name: Draft with the example config
+        id: draft
+        uses: ./draft_release
+        with:
+          config-name: file:../draft_release/example/release-drafter.yml
+          dry-run: 'true'
+
+      - name: Check the result
+        env:
+          SKIPPED: ${{ steps.draft.outputs.skipped }}
+          NAME: ${{ steps.draft.outputs.name }}
+          BODY: ${{ steps.draft.outputs.body }}
+        run: |
+          set -euo pipefail
+          printf 'name: %s\n---\n%s\n---\n' "$NAME" "$BODY"
+          [ "$SKIPPED" = "false" ]          || { echo "::error::skipped is '$SKIPPED', expected false"; exit 1; }
+          # This repository has no published release yet, so only the 'v' of 'v$NEXT_PATCH_VERSION' is certain
+          [[ "$NAME" == v* ]] || { echo "::error::name '$NAME' does not come from name-template 'v\$NEXT_PATCH_VERSION'"; exit 1; }
+          grep -q '^## Changelog' <<< "$BODY"    || { echo "::error::body lacks the example template"; exit 1; }
+          grep -q '^## Contributors' <<< "$BODY" || { echo "::error::body lacks the example template"; exit 1; }
+
+  extends:
+    name: _extends and input pass-through (dry-run)
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout the source code
+        uses: actions/checkout@v7
+
+      # Loaded through the GitHub API with an explicit repository, like a mod repository would point at this one
+      - name: Draft with a config that extends the example
+        id: draft
+        uses: ./draft_release
+        with:
+          config-name: ${{ github.repository }}:/draft_release/test/extends.yml@${{ env.TEST_SHA }}
+          name: pass-through-name
+          tag: pass-through-tag
+          header: pass-through-header
+          dry-run: 'true'
+
+      - name: Check the result
+        env:
+          NAME: ${{ steps.draft.outputs.name }}
+          TAG: ${{ steps.draft.outputs.tag_name }}
+          BODY: ${{ steps.draft.outputs.body }}
+        run: |
+          set -euo pipefail
+          printf 'name: %s  tag: %s\n---\n%s\n---\n' "$NAME" "$TAG" "$BODY"
+          [ "$NAME" = "pass-through-name" ] || { echo "::error::input name not passed through"; exit 1; }
+          [ "$TAG" = "pass-through-tag" ]   || { echo "::error::input tag not passed through"; exit 1; }
+          grep -q 'pass-through-header' <<< "$BODY"           || { echo "::error::input header not passed through"; exit 1; }
+          grep -q '^## Changelog' <<< "$BODY"                 || { echo "::error::template not inherited via _extends"; exit 1; }
+          grep -q 'draft_release extends fixture' <<< "$BODY" || { echo "::error::footer of the extending file missing"; exit 1; }
+
+  cross-org:
+    name: Config from another organization (dry-run)
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout the source code
+        uses: actions/checkout@v7
+
+      # Proves github.token can read a config from a public repository of another owner
+      - name: Draft with release-drafter's own config
+        id: draft
+        uses: ./draft_release
+        with:
+          config-name: release-drafter/release-drafter:/.github/release-drafter.yml@v7.10.0
+          dry-run: 'true'
+
+      - name: Check the result
+        env:
+          BODY: ${{ steps.draft.outputs.body }}
+        run: |
+          set -euo pipefail
+          printf '%s\n' "$BODY"
+          grep -q "^# What's Changed" <<< "$BODY" || { echo "::error::config of the other repository not used"; exit 1; }
+
+  real-draft:
+    name: Real draft, deleted afterwards
+    # Pull requests from forks get a read-only token
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write # create and delete the test draft
+      pull-requests: read
+    concurrency:
+      group: test_draft_release-real-draft
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+    steps:
+      - name: Checkout the source code
+        uses: actions/checkout@v7
+
+      # release-drafter updates an existing draft instead of creating one - never touch a real draft
+      - name: Check for existing drafts
+        id: guard
+        run: |
+          set -euo pipefail
+          drafts=$(gh api "repos/$GH_REPO/releases" --paginate --jq '[.[] | select(.draft)] | length')
+          if [ "$drafts" -gt 0 ]; then
+            echo "::notice::$GH_REPO already has $drafts draft release(s) - real draft test skipped so it does not overwrite them."
+            echo "run=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "run=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Draft a release
+        id: draft
+        if: steps.guard.outputs.run == 'true'
+        uses: ./draft_release
+        with:
+          config-name: file:../draft_release/example/release-drafter.yml
+          commitish: ${{ env.TEST_SHA }}
+          name: draft_release test ${{ github.run_id }}
+          tag: test-draft-release-${{ github.run_id }}
+
+      - name: Check the draft
+        if: steps.guard.outputs.run == 'true'
+        env:
+          ID: ${{ steps.draft.outputs.id }}
+          URL: ${{ steps.draft.outputs.html_url }}
+        run: |
+          set -euo pipefail
+          [ -n "$ID" ] || { echo "::error::no release id returned"; exit 1; }
+          echo "Draft: $URL"
+          gh api "repos/$GH_REPO/releases/$ID" --jq '{draft, name, tag_name, target_commitish}' | tee release.json
+          [ "$(jq -r .draft release.json)" = "true" ] || { echo "::error::release $ID is not a draft"; exit 1; }
+          [ "$(jq -r .target_commitish release.json)" = "$TEST_SHA" ] || { echo "::error::commitish not passed through"; exit 1; }
+
+      - name: Delete the draft
+        if: always() && steps.draft.outputs.id != ''
+        env:
+          ID: ${{ steps.draft.outputs.id }}
+        run: gh api -X DELETE "repos/$GH_REPO/releases/$ID" && echo "Deleted draft $ID"

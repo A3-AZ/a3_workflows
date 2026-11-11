@@ -1,0 +1,50 @@
+# Example release-drafter config for an Arma 3 mod - copy to .github/release-drafter.yml of your repository.
+# Sorts merged pull requests into changelog sections by their pr/* labels (see sync_labels for the label set).
+# A pull request with labels of several categories is listed in each of them.
+# Syntax: release-drafter v7 - https://github.com/release-drafter/release-drafter#configuration-options
+
+name-template: 'v$NEXT_PATCH_VERSION'
+tag-template: 'v$NEXT_PATCH_VERSION'
+
+categories:
+  - title: 'Features 🚀'
+    when:
+      labels:
+        - pr/new
+        - pr/improvement
+  - title: 'Bug Fixes 🐛'
+    when:
+      label: pr/fix
+  - title: 'Settings ⚙️'
+    when:
+      label: pr/settings
+  - title: 'Translation 📚'
+    when:
+      label: pr/translation
+  - title: 'Documentation 📚'
+    when:
+      label: pr/docs
+  - title: 'Maintenance 🛠️'
+    when:
+      labels:
+        - pr/maintenance
+        - pr/cleanup
+  - title: 'Breaking Changes ⚠️'
+    when:
+      label: pr/breaking
+  # Pull requests with this label are left out of the release notes
+  - type: pre-exclude
+    when:
+      label: pr/ignore
+
+change-template: '* $TITLE (#$NUMBER)'
+template: |
+  ## Summary
+
+  ## Changelog
+
+  $CHANGES
+
+  ## Contributors
+
+  $CONTRIBUTORS
