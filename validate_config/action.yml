@@ -1,0 +1,34 @@
+name: 'Validate: Config'
+description: 'Check the config style of an Arma 3 mod: tabs, mismatched and unbalanced brackets (errors), class formatting (warnings)'
+author: 'A3-AZ'
+
+inputs:
+  path:
+    description: 'Root of the mod, relative to the workspace'
+    required: false
+    default: '.'
+  folders:
+    description: 'Space-separated folders below path to scan'
+    required: false
+    default: 'addons optionals'
+  extensions:
+    description: 'Space-separated file extensions to check'
+    required: false
+    default: 'cpp hpp rvmat cfg'
+
+runs:
+  using: composite
+  steps:
+    - name: Validate config style
+      shell: bash
+      env:
+        INPUT_PATH: ${{ inputs.path }}
+        INPUT_FOLDERS: ${{ inputs.folders }}
+        INPUT_EXTENSIONS: ${{ inputs.extensions }}
+        SCRIPT: ${{ github.action_path }}/scripts/validate_config.py
+      run: |
+        if [ ! -d "$INPUT_PATH" ]; then
+          echo "::error title=validate_config::Input 'path' is not a directory: '$INPUT_PATH'. Check out the repository first (actions/checkout)."
+          exit 1
+        fi
+        python3 "$SCRIPT" --path "$INPUT_PATH" --folders "$INPUT_FOLDERS" --extensions "$INPUT_EXTENSIONS"
