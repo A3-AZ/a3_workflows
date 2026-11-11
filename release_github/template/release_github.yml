@@ -1,0 +1,25 @@
+# Builds the mod with HEMTT and attaches the zip to every full GitHub release.
+# Documentation: https://github.com/A3-AZ/a3_workflows/tree/main/release_github
+#
+# Copy this file to .github/workflows/release_github.yml - no values to fill in.
+
+name: "Release: GitHub"
+
+on:
+  release:
+    types: [released]
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout the source code
+        uses: actions/checkout@v7
+
+      - name: Build and attach the zip
+        uses: A3-AZ/a3_workflows/release_github@v1
+        # with:
+        #   asset-name: '{prefix}-{tag}.zip'   # optional - file name of the zip on the release
