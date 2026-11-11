@@ -15,7 +15,7 @@ inputs:
     description: Number of the pull request to check. Empty = the pull request of the triggering event.
     default: ''
   github-token:
-    description: Token used to read the pull request. Needs 'pull-requests: read'.
+    description: "Token used to read the pull request. Needs the permission pull-requests: read."
     default: ${{ github.token }}
 
 outputs:
