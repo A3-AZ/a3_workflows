@@ -179,7 +179,7 @@ jobs:
       FOLDER: ${{ matrix.target.folder }}-${{ needs.plan.outputs.version }}
     steps:
       - name: Checkout the source code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Set version from release tag
         env:
