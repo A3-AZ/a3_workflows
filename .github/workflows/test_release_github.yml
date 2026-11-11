@@ -1,0 +1,119 @@
+# Tests release_github against real HEMTT mods: builds them and checks the zip (dry run),
+# then attaches a zip to a temporary draft release of this repository and deletes it again.
+
+name: "Test: release_github"
+
+on:
+  pull_request:
+    paths:
+      - release_github/**
+      - .github/workflows/test_release_github.yml
+  push:
+    branches: [main]
+    paths:
+      - release_github/**
+      - .github/workflows/test_release_github.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  dry-run:
+    name: Dry run (${{ matrix.mod.repo }})
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        mod:
+          - { repo: andx667/advanced_vanilla_objects, prefix: avo }
+          - { repo: andx667/civilian_presence_extended, prefix: cpx }
+    steps:
+      - name: Checkout the mod
+        uses: actions/checkout@v7
+        with:
+          repository: ${{ matrix.mod.repo }}
+
+      - name: Checkout a3_workflows
+        uses: actions/checkout@v7
+        with:
+          path: .a3_workflows
+
+      - name: Run release_github
+        id: release
+        uses: ./.a3_workflows/release_github
+        with:
+          upload: 'false'
+
+      - name: Check the outputs
+        env:
+          PREFIX: ${{ steps.release.outputs.prefix }}
+          ZIP: ${{ steps.release.outputs.zip }}
+          ASSET_NAME: ${{ steps.release.outputs.asset-name }}
+          EXPECTED_PREFIX: ${{ matrix.mod.prefix }}
+        run: |
+          set -euo pipefail
+          echo "prefix=$PREFIX zip=$ZIP asset-name=$ASSET_NAME"
+          ls -la releases/
+          [ "$PREFIX" = "$EXPECTED_PREFIX" ] || { echo "::error::Expected prefix '$EXPECTED_PREFIX', got '$PREFIX'."; exit 1; }
+          [ "$ASSET_NAME" = "$EXPECTED_PREFIX-dry-run.zip" ] || { echo "::error::Unexpected asset name '$ASSET_NAME'."; exit 1; }
+          [ -f "$ZIP" ] || { echo "::error::Zip '$ZIP' does not exist."; exit 1; }
+          echo "Zip content (top-level entries):"
+          unzip -Z1 "$ZIP" | cut -d/ -f1-2 | sort -u
+          unzip -Z1 "$ZIP" | grep -q '\.pbo$' || { echo "::error::Zip contains no PBO."; exit 1; }
+
+  upload:
+    name: Upload to a draft release
+    needs: dry-run
+    # Fork pull requests get a read-only token
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write # create and delete the draft release
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+      TAG: test-release-github-${{ github.run_id }}-${{ github.run_attempt }}
+    steps:
+      - name: Checkout the mod
+        uses: actions/checkout@v7
+        with:
+          repository: andx667/advanced_vanilla_objects
+
+      - name: Checkout a3_workflows
+        uses: actions/checkout@v7
+        with:
+          path: .a3_workflows
+
+      # A draft release creates no git tag, so nothing is left behind once it is deleted
+      - name: Create a draft release
+        run: gh release create "$TAG" --draft --title "release_github test" --notes "Temporary release of the release_github test - deleted at the end of the run."
+
+      - name: Run release_github
+        uses: ./.a3_workflows/release_github
+        with:
+          tag: ${{ env.TAG }}
+          asset-name: '{prefix}-test-{tag}.zip'
+
+      - name: Upload again (--clobber replaces the asset)
+        uses: ./.a3_workflows/release_github
+        with:
+          tag: ${{ env.TAG }}
+          asset-name: '{prefix}-test-{tag}.zip'
+
+      - name: Check the release asset
+        run: |
+          set -euo pipefail
+          assets=$(gh release view "$TAG" --json assets --jq '.assets[] | "\(.name) \(.size)"')
+          echo "$assets"
+          [ "$(wc -l <<< "$assets")" -eq 1 ] || { echo "::error::Expected exactly one asset."; exit 1; }
+          grep -q "^avo-test-$TAG.zip " <<< "$assets" || { echo "::error::Asset avo-test-$TAG.zip missing."; exit 1; }
+
+      - name: Delete the draft release
+        if: always()
+        run: |
+          gh release delete "$TAG" --yes --cleanup-tag || true
+          if git ls-remote --exit-code "https://github.com/$GH_REPO" "refs/tags/$TAG"; then
+            echo "::error::Tag $TAG still exists."; exit 1
+          fi
+          echo "Draft release and tag $TAG are gone."

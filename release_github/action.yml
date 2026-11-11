@@ -1,0 +1,116 @@
+# Composite action: builds an Arma 3 mod with `hemtt release` and attaches HEMTT's zip to a GitHub release.
+# Documentation and the wrapper to copy into a mod repository: release_github/README.md
+
+name: "Release: GitHub"
+description: Build the mod with `hemtt release` and attach the zip to the GitHub release.
+author: A3-AZ
+
+inputs:
+  tag:
+    description: Tag of the GitHub release to attach the zip to. Empty = the tag of the release event.
+    default: ''
+  asset-name:
+    description: File name of the attached zip. "{prefix}" and "{tag}" are replaced. Empty = "{prefix}-{tag}.zip".
+    default: ''
+  upload:
+    description: Attach the zip to the release. 'false' only builds and checks the zip (dry run).
+    default: 'true'
+  token:
+    description: Token for HEMTT setup and the upload. Needs contents write on the repository.
+    default: ${{ github.token }}
+
+outputs:
+  prefix:
+    description: Mod prefix read from .hemtt/project.toml.
+    value: ${{ steps.prepare.outputs.prefix }}
+  zip:
+    description: Path of the zip built by HEMTT, renamed to asset-name.
+    value: ${{ steps.zip.outputs.zip }}
+  asset-name:
+    description: File name of the zip on the release.
+    value: ${{ steps.prepare.outputs.asset-name }}
+
+runs:
+  using: composite
+  steps:
+    - name: Check inputs and read the mod prefix
+      id: prepare
+      shell: bash
+      env:
+        TAG: ${{ inputs.tag || github.event.release.tag_name }}
+        ASSET_NAME: ${{ inputs.asset-name }}
+        UPLOAD: ${{ inputs.upload }}
+      run: |
+        set -euo pipefail
+        fail() { echo "::error title=release_github::$1"; exit 1; }
+
+        [ -f .hemtt/project.toml ] || fail "No .hemtt/project.toml found - check out a HEMTT project before this action."
+        # Top-level key 'prefix', before the first [section]
+        prefix=$(awk '/^[[:space:]]*\[/ { exit } match($0, /^[[:space:]]*prefix[[:space:]]*=[[:space:]]*["\047][^"\047]+["\047]/) { v = substr($0, RSTART, RLENGTH); sub(/^[^"\047]*["\047]/, "", v); sub(/["\047]$/, "", v); print v; exit }' .hemtt/project.toml)
+        [ -n "$prefix" ] || fail "No 'prefix' found in .hemtt/project.toml."
+
+        case "$UPLOAD" in
+          true)  [ -n "$TAG" ] || fail "No release tag. Run on a release event or set the input 'tag'." ;;
+          false) ;;
+          *) fail "Input upload must be 'true' or 'false', got '$UPLOAD'." ;;
+        esac
+
+        name="$ASSET_NAME"
+        [ -n "$name" ] || name='{prefix}-{tag}.zip'
+        name="${name//\{prefix\}/$prefix}"
+        name="${name//\{tag\}/${TAG:-dry-run}}"
+        [[ "$name" != */* ]] || fail "asset-name '$name' must not contain a '/'."
+
+        echo "Prefix: $prefix"
+        echo "Asset:  $name"
+        {
+          echo "prefix=$prefix"
+          echo "asset-name=$name"
+          echo "tag=$TAG"
+        } >> "$GITHUB_OUTPUT"
+
+    - name: Setup HEMTT
+      uses: arma-actions/hemtt@v1
+      env:
+        GITHUB_TOKEN: ${{ inputs.token }} # authenticated API requests to avoid rate limits
+
+    - name: Build with HEMTT
+      shell: bash
+      run: hemtt release
+
+    - name: Find the zip
+      id: zip
+      shell: bash
+      env:
+        PREFIX: ${{ steps.prepare.outputs.prefix }}
+        ASSET_NAME: ${{ steps.prepare.outputs.asset-name }}
+      run: |
+        set -euo pipefail
+        src="releases/$PREFIX-latest.zip"
+        if [ ! -f "$src" ]; then
+          echo "::error title=release_github::HEMTT did not create '$src'. Content of releases/:"
+          ls -la releases/ || true
+          exit 1
+        fi
+        dir="$RUNNER_TEMP/release_github"
+        mkdir -p "$dir"
+        cp "$src" "$dir/$ASSET_NAME"
+        unzip -l "$dir/$ASSET_NAME" | tail -n 1
+        echo "zip=$dir/$ASSET_NAME" >> "$GITHUB_OUTPUT"
+
+    - name: Attach zip to the GitHub release
+      if: inputs.upload == 'true'
+      shell: bash
+      env:
+        GH_TOKEN: ${{ inputs.token }}
+        GH_REPO: ${{ github.repository }}
+        TAG: ${{ steps.prepare.outputs.tag }}
+        ZIP: ${{ steps.zip.outputs.zip }}
+      run: gh release upload "$TAG" "$ZIP" --clobber
+
+    - name: Skip upload
+      if: inputs.upload != 'true'
+      shell: bash
+      env:
+        ZIP: ${{ steps.zip.outputs.zip }}
+      run: echo "upload is 'false' - $ZIP was not attached."
