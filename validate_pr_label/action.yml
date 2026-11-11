@@ -1,0 +1,80 @@
+# Composite action: fails a pull request that has no label (or no label matching a pattern).
+# Documentation and the wrapper to copy into a mod repository: validate_pr_label/README.md
+
+name: "Validate: PR Label"
+description: Fails a pull request that has no label, or no label matching the given pattern.
+
+inputs:
+  wait-seconds:
+    description: Seconds to wait on 'opened' and 'reopened' events before reading the labels, so labels added right after opening arrive. 0 = no wait.
+    default: '15'
+  label-pattern:
+    description: Glob pattern(s) a label must match to count, e.g. 'pr/*'. Several patterns separated by commas or newlines. Case is ignored. Empty = any label counts.
+    default: ''
+  pr-number:
+    description: Number of the pull request to check. Empty = the pull request of the triggering event.
+    default: ''
+  github-token:
+    description: Token used to read the pull request. Needs 'pull-requests: read'.
+    default: ${{ github.token }}
+
+outputs:
+  labels:
+    description: Comma-separated labels that matched label-pattern (all labels, if no pattern is set).
+    value: ${{ steps.check.outputs.labels }}
+
+runs:
+  using: composite
+  steps:
+    - name: Check inputs
+      id: inputs
+      shell: bash
+      env:
+        WAIT_SECONDS: ${{ inputs.wait-seconds }}
+        PR_NUMBER: ${{ inputs.pr-number || github.event.pull_request.number }}
+      run: |
+        set -euo pipefail
+        fail() { echo "::error title=validate_pr_label::$1"; exit 1; }
+        [[ "$WAIT_SECONDS" =~ ^[0-9]+$ ]] || fail "Input wait-seconds '$WAIT_SECONDS' is not a whole number of seconds."
+        [ -n "$PR_NUMBER" ] || fail "No pull request to check. Trigger the workflow with a pull_request event, or set the input pr-number."
+        [[ "$PR_NUMBER" =~ ^[0-9]+$ ]] || fail "Input pr-number '$PR_NUMBER' is not a pull request number."
+        echo "pr-number=$PR_NUMBER" >> "$GITHUB_OUTPUT"
+
+    # Labels are often added right after a pull request is opened - give them time to arrive.
+    # A labeled event during the wait starts a new run; the wrapper's concurrency group cancels this one.
+    - name: Wait for labels
+      if: (github.event.action == 'opened' || github.event.action == 'reopened') && inputs.wait-seconds != '0'
+      shell: bash
+      env:
+        WAIT_SECONDS: ${{ inputs.wait-seconds }}
+      run: |
+        echo "Waiting ${WAIT_SECONDS}s for labels to be added..."
+        sleep "$WAIT_SECONDS"
+
+    - name: Check labels
+      id: check
+      shell: bash
+      env:
+        GH_TOKEN: ${{ inputs.github-token }}
+        REPO: ${{ github.repository }}
+        PR_NUMBER: ${{ steps.inputs.outputs.pr-number }}
+        LABEL_PATTERN: ${{ inputs.label-pattern }}
+        MATCH_LABELS: ${{ github.action_path }}/scripts/match_labels.sh
+      run: |
+        set -euo pipefail
+        # Read the current labels - the event payload only holds the labels at the time of the trigger
+        labels=$(gh api "repos/$REPO/pulls/$PR_NUMBER" --jq '.labels[].name')
+        all=$(printf '%s' "$labels" | paste -sd ',' - | sed 's/,/, /g')
+        echo "Labels of pull request #$PR_NUMBER: ${all:-none}"
+
+        if matched=$(printf '%s' "$labels" | bash "$MATCH_LABELS" "$LABEL_PATTERN"); then
+          matched=$(printf '%s' "$matched" | paste -sd ',' - | sed 's/,/, /g')
+          echo "Matching labels: $matched"
+          echo "labels=$matched" >> "$GITHUB_OUTPUT"
+        elif [ -z "$LABEL_PATTERN" ]; then
+          echo "::error title=validate_pr_label::Pull request #$PR_NUMBER has no label. Add at least one label."
+          exit 1
+        else
+          echo "::error title=validate_pr_label::Pull request #$PR_NUMBER has no label matching '${LABEL_PATTERN//$'\n'/, }'. Current labels: ${all:-none}."
+          exit 1
+        fi

@@ -1,0 +1,74 @@
+# CI of this repository: tests validate_pr_label - unit tests of the label matching,
+# and the action itself against the pull request that triggered this run.
+
+name: "Test: validate_pr_label"
+
+on:
+  pull_request:
+    types: [opened, labeled, unlabeled, synchronize, reopened]
+    paths:
+      - validate_pr_label/**
+      - .github/workflows/test_validate_pr_label.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pull-requests: read
+
+# Same as the template: a newer event on the pull request cancels a run that is still waiting
+concurrency:
+  group: test-validate-pr-label-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  unit:
+    name: Unit tests
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout the source code
+        uses: actions/checkout@v7
+
+      - name: Run the label matching tests
+        run: bash validate_pr_label/tests/test_match_labels.sh
+
+  action:
+    name: Action on this pull request
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout the source code
+        uses: actions/checkout@v7
+
+      # Fails while this pull request has no label - that is the behaviour under test
+      - name: Check for any label (defaults)
+        id: any
+        uses: ./validate_pr_label
+
+      - name: Check with a pattern no label matches (must fail)
+        id: nomatch
+        continue-on-error: true
+        uses: ./validate_pr_label
+        with:
+          label-pattern: 'no-such-label-*, nor-this-one'
+          wait-seconds: '0'
+          pr-number: ${{ github.event.pull_request.number }}
+
+      - name: Check with an invalid wait-seconds (must fail)
+        id: badinput
+        continue-on-error: true
+        uses: ./validate_pr_label
+        with:
+          wait-seconds: 'soon'
+
+      - name: Check the results
+        env:
+          ANY_LABELS: ${{ steps.any.outputs.labels }}
+          NOMATCH: ${{ steps.nomatch.outcome }}
+          BADINPUT: ${{ steps.badinput.outcome }}
+        run: |
+          set -euo pipefail
+          echo "Labels found: $ANY_LABELS"
+          [ -n "$ANY_LABELS" ] || { echo "::error::Output 'labels' is empty although the check passed."; exit 1; }
+          [ "$NOMATCH" = "failure" ] || { echo "::error::A pattern no label matches did not fail (outcome: $NOMATCH)."; exit 1; }
+          [ "$BADINPUT" = "failure" ] || { echo "::error::An invalid wait-seconds did not fail (outcome: $BADINPUT)."; exit 1; }
+          echo "All checks behaved as expected."
