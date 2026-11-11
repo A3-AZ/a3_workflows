@@ -34,4 +34,4 @@ jobs:
         # with:
         #   title: 'Translations'
         #   header: 'Translation completeness per language.'
-        #   guide-url: 'https://ace3.acemod.org/wiki/development/how-to-translate-ace3.html'
+        #   guide-url: 'https://ace3.acemod.org/wiki/development/how-to-translate-ace3.html'   # default; '' = no link

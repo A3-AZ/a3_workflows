@@ -12,8 +12,8 @@ inputs:
     description: Text above the coverage table. Empty = no header.
     default: Translation completeness per language.
   guide-url:
-    description: URL of a translation guide, linked above the table. Empty = no link.
-    default: ''
+    description: URL of a translation guide, linked above the table. Defaults to the ACE3 guide as a community baseline. Empty = no link.
+    default: https://ace3.acemod.org/wiki/development/how-to-translate-ace3.html
   path:
     description: Folder of the HEMTT project, relative to the workspace.
     default: '.'

@@ -11,7 +11,7 @@ The issue body looks like this:
 ```markdown
 Translation completeness per language.
 
-**[Translation guide](https://example.com/guide)**
+**[Translation guide](https://ace3.acemod.org/wiki/development/how-to-translate-ace3.html)**
 
 | Language | Coverage % | Addons                    |
 |----------|------------|---------------------------|
@@ -41,7 +41,7 @@ The wrapper must check out the repository before the action runs.
 |---|---|---|
 | `title` | `Translations` | Title of the issue. Matched against open issues, ignoring case |
 | `header` | `Translation completeness per language.` | Text above the table. Empty = no header |
-| `guide-url` | `''` | URL of a translation guide, linked above the table. Empty = no link |
+| `guide-url` | [ACE3 translation guide](https://ace3.acemod.org/wiki/development/how-to-translate-ace3.html) | URL of a translation guide, linked above the table. The ACE3 guide is a good community baseline; point it to your own guide if you have one. `''` = no link |
 | `path` | `.` | Folder of the HEMTT project, relative to the workspace |
 | `dry-run` | `'false'` | `'true'` = generate the report and look up the issue, but never create or edit it |
 | `token` | `${{ github.token }}` | Token for the HEMTT download and the GitHub CLI |
