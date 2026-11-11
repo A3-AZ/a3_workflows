@@ -21,7 +21,7 @@ inputs:
     description: "'true' = generate the report and look up the issue, but never create or edit it."
     default: 'false'
   token:
-    description: Token for HEMTT downloads and the GitHub CLI. Needs `issues: write` unless dry-run is set.
+    description: "Token for HEMTT downloads and the GitHub CLI. Needs `issues: write` unless dry-run is set."
     default: ${{ github.token }}
 
 outputs:
