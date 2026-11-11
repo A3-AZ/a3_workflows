@@ -1,7 +1,7 @@
 # Composite action: drafts the next GitHub release with release notes sorted from labelled pull requests.
-# Documentation and the wrapper to copy into a mod repository: draft_release/README.md
+# Documentation and the wrapper to copy into a mod repository: draft_changelog/README.md
 
-name: draft_release
+name: draft_changelog
 description: Draft the next GitHub release from labelled pull requests with release-drafter. The config file stays in the mod repository.
 author: A3-AZ
 
@@ -94,7 +94,7 @@ runs:
         REPOSITORY: ${{ github.repository }}
       run: |
         set -euo pipefail
-        fail() { echo "::error title=draft_release::$1"; exit 1; }
+        fail() { echo "::error title=draft_changelog::$1"; exit 1; }
 
         [ -n "$CONFIG_NAME" ] || fail "Input config-name is empty. Use the default 'release-drafter.yml' or a path to your config."
         [ -n "$TOKEN" ]       || fail "Input token is empty."
@@ -104,7 +104,7 @@ runs:
         esac
 
         if [ "$SKIP_FORKS" = "true" ] && [ "$IS_FORK" = "true" ]; then
-          echo "::notice title=draft_release::$REPOSITORY is a fork - no release drafted. Set skip-forks: false to draft anyway."
+          echo "::notice title=draft_changelog::$REPOSITORY is a fork - no release drafted. Set skip-forks: false to draft anyway."
           echo "skipped=true" >> "$GITHUB_OUTPUT"
         else
           echo "Config: $CONFIG_NAME"

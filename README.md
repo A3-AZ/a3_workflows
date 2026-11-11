@@ -111,18 +111,19 @@ Anything else - bug fixes, new optional inputs with a sensible default, improved
 
 ## Workflows
 
-| Workflow | Purpose | Status |
+| Workflow | Type | Purpose |
 |---|---|---|
-| `validate_hemtt` | Run `hemtt check` | planned |
-| `validate_config` | Check config style | planned |
-| `validate_stringtable` | Check stringtable files | planned |
-| `validate_pr_label` | Fail pull requests without a label | planned |
-| `sync_labels` | Apply `.github/labels.yml` to the repository | planned |
-| `update_translation_issue` | Keep a GitHub issue updated with `hemtt localization coverage` | planned |
-| `draft_release` | Draft release notes from labelled pull requests | planned |
-| `release_github` | Build with HEMTT and attach the zip to the GitHub release | planned |
-| `release_steam` | Build with HEMTT, attach the zip to the GitHub release and upload to the Steam Workshop - stable and optional dev item in one workflow, optional description and preview image from `.steam/` | planned |
-| `announce_discord` | Announce a release on Discord | planned |
+| [`validate_hemtt`](validate_hemtt/) | composite action | Run `hemtt check` |
+| [`validate_config`](validate_config/) | composite action | Check the config style of `.cpp`, `.hpp`, `.rvmat` and `.cfg` files |
+| [`validate_stringtable`](validate_stringtable/) | composite action | Check every `stringtable.xml` |
+| [`validate_pr_label`](validate_pr_label/) | composite action | Fail pull requests without a (matching) label |
+| [`sync_labels`](sync_labels/) | composite action | Apply `.github/labels.yml` to the repository's labels |
+| [`update_translation_issue`](update_translation_issue/) | composite action | Keep a GitHub issue updated with `hemtt localization coverage` |
+| [`draft_changelog`](draft_changelog/) | composite action | Keep a draft release with the changelog from labelled pull requests up to date |
+| [`release_github`](release_github/) | composite action | Build with HEMTT and attach the zip to the GitHub release |
+| [`release_steam`](release_steam/) | reusable workflow | Build with HEMTT, attach the zip and upload to the Steam Workshop - stable and optional dev item, Workshop page from `.steam/`, Discord announcement |
+
+Until the first release is tagged, `@v1` does not exist yet.
 
 ## Contributing
 

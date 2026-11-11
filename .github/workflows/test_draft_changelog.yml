@@ -1,17 +1,17 @@
-# Tests draft_release/ against this repository: config loading in dry-run, plus one real draft that is deleted again.
+# Tests draft_changelog/ against this repository: config loading in dry-run, plus one real draft that is deleted again.
 
-name: "Test: draft_release"
+name: "Test: draft_changelog"
 
 on:
   pull_request:
     paths:
-      - draft_release/**
-      - .github/workflows/test_draft_release.yml
+      - draft_changelog/**
+      - .github/workflows/test_draft_changelog.yml
   push:
     branches: [main]
     paths:
-      - draft_release/**
-      - .github/workflows/test_draft_release.yml
+      - draft_changelog/**
+      - .github/workflows/test_draft_changelog.yml
   workflow_dispatch:
 
 permissions:
@@ -32,9 +32,9 @@ jobs:
 
       - name: Draft with the example config
         id: draft
-        uses: ./draft_release
+        uses: ./draft_changelog
         with:
-          config-name: file:../draft_release/example/release-drafter.yml
+          config-name: file:../draft_changelog/example/release-drafter.yml
           dry-run: 'true'
 
       - name: Check the result
@@ -61,9 +61,9 @@ jobs:
       # Loaded through the GitHub API with an explicit repository, like a mod repository would point at this one
       - name: Draft with a config that extends the example
         id: draft
-        uses: ./draft_release
+        uses: ./draft_changelog
         with:
-          config-name: ${{ github.repository }}:/draft_release/test/extends.yml@${{ env.TEST_SHA }}
+          config-name: ${{ github.repository }}:/draft_changelog/test/extends.yml@${{ env.TEST_SHA }}
           name: pass-through-name
           tag: pass-through-tag
           header: pass-through-header
@@ -81,7 +81,7 @@ jobs:
           [ "$TAG" = "pass-through-tag" ]   || { echo "::error::input tag not passed through"; exit 1; }
           grep -q 'pass-through-header' <<< "$BODY"           || { echo "::error::input header not passed through"; exit 1; }
           grep -q '^## Changelog' <<< "$BODY"                 || { echo "::error::template not inherited via _extends"; exit 1; }
-          grep -q 'draft_release extends fixture' <<< "$BODY" || { echo "::error::footer of the extending file missing"; exit 1; }
+          grep -q 'draft_changelog extends fixture' <<< "$BODY" || { echo "::error::footer of the extending file missing"; exit 1; }
 
   cross-org:
     name: Config from another organization (dry-run)
@@ -93,7 +93,7 @@ jobs:
       # Proves github.token can read a config from a public repository of another owner
       - name: Draft with release-drafter's own config
         id: draft
-        uses: ./draft_release
+        uses: ./draft_changelog
         with:
           config-name: release-drafter/release-drafter:/.github/release-drafter.yml@v7.10.0
           dry-run: 'true'
@@ -115,7 +115,7 @@ jobs:
       contents: write # create and delete the test draft
       pull-requests: read
     concurrency:
-      group: test_draft_release-real-draft
+      group: test_draft_changelog-real-draft
     env:
       GH_TOKEN: ${{ github.token }}
       GH_REPO: ${{ github.repository }}
@@ -139,12 +139,12 @@ jobs:
       - name: Draft a release
         id: draft
         if: steps.guard.outputs.run == 'true'
-        uses: ./draft_release
+        uses: ./draft_changelog
         with:
-          config-name: file:../draft_release/example/release-drafter.yml
+          config-name: file:../draft_changelog/example/release-drafter.yml
           commitish: ${{ env.TEST_SHA }}
-          name: draft_release test ${{ github.run_id }}
-          tag: test-draft-release-${{ github.run_id }}
+          name: draft_changelog test ${{ github.run_id }}
+          tag: test-draft-changelog-${{ github.run_id }}
 
       - name: Check the draft
         if: steps.guard.outputs.run == 'true'

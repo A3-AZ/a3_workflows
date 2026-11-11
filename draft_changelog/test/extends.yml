@@ -1,8 +1,8 @@
-# Test fixture for .github/workflows/test_draft_release.yml - not an example to copy.
+# Test fixture for .github/workflows/test_draft_changelog.yml - not an example to copy.
 # Extends the example config and appends a category, the way a mod repository would extend a shared config.
 
 _extends:
-  from: /draft_release/example/release-drafter.yml
+  from: /draft_changelog/example/release-drafter.yml
   strategy:
     categories: append
 
@@ -13,4 +13,4 @@ categories:
 
 footer: |
 
-  draft_release extends fixture
+  draft_changelog extends fixture

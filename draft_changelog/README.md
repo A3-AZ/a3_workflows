@@ -1,4 +1,4 @@
-# draft_release
+# draft_changelog
 
 Composite action: [`action.yml`](action.yml)
 
@@ -28,14 +28,14 @@ The example names the draft `v$NEXT_PATCH_VERSION` (last release `v1.2.3` → `v
 Instead of copying the example, a repository can extend it. Put this into `.github/release-drafter.yml`:
 
 ```yaml
-_extends: A3-AZ/a3_workflows:/draft_release/example/release-drafter.yml@v1
+_extends: A3-AZ/a3_workflows:/draft_changelog/example/release-drafter.yml@v1
 ```
 
 release-drafter loads the file through the GitHub API with the workflow's own token - this works because `A3-AZ/a3_workflows` is public, no extra token or secret is needed. Keys you set in your own file replace the inherited ones; to add categories instead of replacing them, use the mapping form:
 
 ```yaml
 _extends:
-  from: A3-AZ/a3_workflows:/draft_release/example/release-drafter.yml@v1
+  from: A3-AZ/a3_workflows:/draft_changelog/example/release-drafter.yml@v1
   strategy:
     categories: append
 categories:
@@ -97,7 +97,7 @@ Configs written for release-drafter v6 still load, but category `labels:` and `e
 ## Installation
 
 1. Copy [`example/release-drafter.yml`](example/release-drafter.yml) to `.github/release-drafter.yml` of your repository and adjust the sections - or extend it, see *Sharing one config across repositories*.
-2. Copy [`template/draft_release.yml`](template/draft_release.yml) to `.github/workflows/draft_release.yml`.
+2. Copy [`template/draft_changelog.yml`](template/draft_changelog.yml) to `.github/workflows/draft_changelog.yml`.
 3. Remove the old `release-drafter.yml` workflow, so the draft is not written twice.
 4. Merge a labelled pull request, or run the workflow by hand, and check the draft under *Releases*.
 

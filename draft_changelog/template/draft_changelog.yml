@@ -1,8 +1,8 @@
 # Drafts the next GitHub release with release notes sorted from labelled pull requests.
 # Needs .github/release-drafter.yml in this repository.
-# Documentation: https://github.com/A3-AZ/a3_workflows/tree/main/draft_release
+# Documentation: https://github.com/A3-AZ/a3_workflows/tree/main/draft_changelog
 
-name: "Release: Draft"
+name: "Release: Draft Changelog"
 
 on:
   push:
@@ -14,7 +14,7 @@ permissions:
 
 # Each run rebuilds the whole draft, so only the newest run matters
 concurrency:
-  group: draft_release-${{ github.ref }}
+  group: draft_changelog-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -26,6 +26,6 @@ jobs:
       pull-requests: read # read the merged pull requests and their labels
     steps:
       - name: Draft release
-        uses: A3-AZ/a3_workflows/draft_release@v1
+        uses: A3-AZ/a3_workflows/draft_changelog@v1
         # with:
         #   config-name: release-drafter.yml
