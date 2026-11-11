@@ -122,9 +122,6 @@ Anything else - bug fixes, new optional inputs with a sensible default, improved
 | [`draft_changelog`](draft_changelog/) | composite action | Keep a draft release with the changelog from labelled pull requests up to date |
 | [`release_github`](release_github/) | composite action | Build with HEMTT and attach the zip to the GitHub release |
 | [`release_steam`](release_steam/) | reusable workflow | Build with HEMTT, attach the zip and upload to the Steam Workshop - stable and optional dev item, Workshop page from `.steam/`, Discord announcement |
-
-Until the first release is tagged, `@v1` does not exist yet.
-
 ## Contributing
 
 Changes go through pull requests and need a review by a maintainer. Before a change is released it is tested against a real mod repository. See [CONTRIBUTING.md](CONTRIBUTING.md) for details.
