@@ -1,0 +1,91 @@
+# CI of this repository: tests validate_config - unit tests of the checker, both mod templates, and a bad fixture that must fail
+
+name: "Test: validate_config"
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'validate_config/**'
+      - '.github/workflows/test_validate_config.yml'
+  pull_request:
+    paths:
+      - 'validate_config/**'
+      - '.github/workflows/test_validate_config.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  unit-tests:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout the source code
+        uses: actions/checkout@v7
+
+      - name: Run unit tests
+        run: python3 -m unittest discover -v -s validate_config/tests
+
+  real-mods:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout the source code
+        uses: actions/checkout@v7
+
+      - name: Checkout ZRN-Mod-Template
+        uses: actions/checkout@v7
+        with:
+          repository: OverlordZorn/ZRN-Mod-Template
+          path: mods/zrn
+
+      - name: Checkout arma-mod-template
+        uses: actions/checkout@v7
+        with:
+          repository: andx667/arma-mod-template
+          path: mods/andx
+
+      - name: Validate ZRN-Mod-Template
+        uses: ./validate_config
+        with:
+          path: mods/zrn
+
+      - name: Validate arma-mod-template
+        uses: ./validate_config
+        with:
+          path: mods/andx
+
+  fixtures:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout the source code
+        uses: actions/checkout@v7
+
+      - name: Good fixture passes
+        uses: ./validate_config
+        with:
+          path: validate_config/tests/fixtures/good
+
+      - name: Bad fixture
+        id: bad
+        continue-on-error: true
+        uses: ./validate_config
+        with:
+          path: validate_config/tests/fixtures/bad
+
+      - name: Missing path
+        id: missing
+        continue-on-error: true
+        uses: ./validate_config
+        with:
+          path: does/not/exist
+
+      - name: Bad fixture and missing path must fail
+        env:
+          BAD: ${{ steps.bad.outcome }}
+          MISSING: ${{ steps.missing.outcome }}
+        run: |
+          echo "bad fixture: $BAD, missing path: $MISSING"
+          if [ "$BAD" != "failure" ] || [ "$MISSING" != "failure" ]; then
+            echo "::error::Expected both steps to fail"
+            exit 1
+          fi
