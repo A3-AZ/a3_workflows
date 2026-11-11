@@ -1,0 +1,305 @@
+# Reusable workflow: builds an Arma 3 mod with HEMTT and publishes it to the Steam Workshop.
+# Documentation and the wrapper to copy into a mod repository: release_steam/README.md
+
+name: "Release: Steam"
+
+on:
+  workflow_call:
+    inputs:
+      mod-folder:
+        description: Name of the mod folder, e.g. '@example_mod'. Used for the zip and the uploaded folder.
+        type: string
+        required: true
+      mod-name:
+        description: Name of the stable mod. Written to meta.cpp and set as the Workshop title of the stable item.
+        type: string
+        required: true
+      workshop-id:
+        description: Workshop item ID of the stable item.
+        type: string
+        required: true
+      workshop-id-dev:
+        description: Workshop item ID of the dev item. Empty = no dev item, pre-releases do nothing.
+        type: string
+        default: ''
+      mod-name-dev:
+        description: Name of the dev mod. Empty = "<mod-name> [DEV]".
+        type: string
+        default: ''
+      mod-folder-dev:
+        description: Mod folder of the dev build. Empty = "<mod-folder>_dev".
+        type: string
+        default: ''
+      version-file:
+        description: File whose MAJOR, MINOR and PATCH defines are set from the release tag. Empty = skip.
+        type: string
+        default: addons/main/script_version.hpp
+      hemtt-script-stable:
+        description: HEMTT script run before the stable build. Skipped if .hemtt/scripts/<name>.rhai does not exist.
+        type: string
+        default: set_RELEASE_VERSION_STABLE
+      hemtt-script-dev:
+        description: HEMTT script run before the dev build. Skipped if .hemtt/scripts/<name>.rhai does not exist.
+        type: string
+        default: set_RELEASE_VERSION_DEV
+      steam-dir:
+        description: Folder with description.md and preview.png for the Workshop page. dev/ inside it overrides them for the dev item.
+        type: string
+        default: .steam
+      discord-content-stable:
+        description: Discord message text above the release notes for a stable release (e.g. add a role ping).
+        type: string
+        default: Stable Release!
+      discord-content-dev:
+        description: Discord message text above the release notes for a dev release.
+        type: string
+        default: Dev Release!
+      discord-username:
+        description: Name of the Discord bot. Empty = mod-name.
+        type: string
+        default: ''
+      discord-avatar-url:
+        description: Avatar image URL of the Discord bot.
+        type: string
+        default: ''
+      discord-footer-title:
+        description: Footer text of the Discord message. Empty = mod-name.
+        type: string
+        default: ''
+      discord-footer-icon-url:
+        description: Footer icon URL of the Discord message.
+        type: string
+        default: ''
+      runs-on:
+        description: Runner for the build and upload jobs.
+        type: string
+        default: ubuntu-24.04
+    secrets:
+      steam-username:
+        description: Steam account that may update the Workshop items (Steam Guard disabled).
+        required: true
+      steam-password:
+        description: Password of that account.
+        required: true
+      discord-webhook:
+        description: Discord webhook URL. Not set = no announcement.
+        required: false
+
+jobs:
+  plan:
+    name: Plan
+    runs-on: ubuntu-24.04
+    permissions: {}
+    outputs:
+      version: ${{ steps.plan.outputs.version }}
+      channel: ${{ steps.plan.outputs.channel }}
+      targets: ${{ steps.plan.outputs.targets }}
+    steps:
+      - name: Work out what to release
+        id: plan
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          ACTION: ${{ github.event.action }}
+          TAG: ${{ github.event.release.tag_name }}
+          MOD_FOLDER: ${{ inputs.mod-folder }}
+          MOD_NAME: ${{ inputs.mod-name }}
+          WORKSHOP_ID: ${{ inputs.workshop-id }}
+          WORKSHOP_ID_DEV: ${{ inputs.workshop-id-dev }}
+          MOD_NAME_DEV: ${{ inputs.mod-name-dev }}
+          MOD_FOLDER_DEV: ${{ inputs.mod-folder-dev }}
+          HEMTT_SCRIPT_STABLE: ${{ inputs.hemtt-script-stable }}
+          HEMTT_SCRIPT_DEV: ${{ inputs.hemtt-script-dev }}
+          STEAM_USERNAME: ${{ secrets.steam-username }}
+          STEAM_PASSWORD: ${{ secrets.steam-password }}
+        run: |
+          set -euo pipefail
+          fail() { echo "::error title=release_steam::$1"; exit 1; }
+
+          [ "$EVENT_NAME" = "release" ] || fail "Must be triggered by a release event (types: prereleased, released), got '$EVENT_NAME'."
+          case "$ACTION" in
+            prereleased) channel=dev ;;
+            released)    channel=stable ;;
+            *) fail "Unsupported release event type '$ACTION'. Use 'types: [prereleased, released]' in the wrapper." ;;
+          esac
+
+          [[ "$TAG" =~ ^v?[0-9]+\.[0-9]+\.[0-9]+ ]] || fail "Release tag '$TAG' must start with MAJOR.MINOR.PATCH, e.g. v1.2.3 or v1.2.3-rc1."
+          version="${TAG#v}"
+
+          [ -n "$MOD_FOLDER" ] || fail "Input mod-folder is empty."
+          [ -n "$MOD_NAME" ]   || fail "Input mod-name is empty."
+          [[ "$WORKSHOP_ID" =~ ^[0-9]+$ && "$WORKSHOP_ID" != "0000000000" ]] || fail "Input workshop-id '$WORKSHOP_ID' is not a Workshop item ID."
+          [[ -z "$WORKSHOP_ID_DEV" || "$WORKSHOP_ID_DEV" =~ ^[0-9]+$ ]] || fail "Input workshop-id-dev '$WORKSHOP_ID_DEV' is not a Workshop item ID."
+
+          # One target per Workshop item to update. "attach" = this build's zip goes onto the GitHub release.
+          targets='[]'
+          add_target() {
+            targets=$(jq -c --arg channel "$1" --arg id "$2" --arg name "$3" --arg folder "$4" --arg script "$5" --argjson attach "$6" \
+              '. + [{channel: $channel, "workshop-id": $id, name: $name, folder: $folder, "hemtt-script": $script, attach: $attach}]' <<< "$targets")
+          }
+          if [ "$channel" = "stable" ]; then
+            add_target stable "$WORKSHOP_ID" "$MOD_NAME" "$MOD_FOLDER" "$HEMTT_SCRIPT_STABLE" true
+          fi
+          # The dev item is updated on pre-releases and on full releases, so it never falls behind stable
+          if [ -n "$WORKSHOP_ID_DEV" ]; then
+            attach=false; [ "$channel" = "dev" ] && attach=true
+            add_target dev "$WORKSHOP_ID_DEV" "${MOD_NAME_DEV:-$MOD_NAME [DEV]}" "${MOD_FOLDER_DEV:-${MOD_FOLDER}_dev}" "$HEMTT_SCRIPT_DEV" "$attach"
+          elif [ "$channel" = "dev" ]; then
+            echo "::notice title=release_steam::Pre-release, but no workshop-id-dev is set - nothing to publish."
+          fi
+
+          if [ "$targets" != "[]" ]; then
+            missing=""
+            [ -z "$STEAM_USERNAME" ] && missing="$missing steam-username"
+            [ -z "$STEAM_PASSWORD" ] && missing="$missing steam-password"
+            [ -z "$missing" ] || fail "Secrets empty:$missing. Pass them in the wrapper. Org secrets reach private repos empty on the GitHub Free plan."
+          fi
+
+          echo "Release $TAG ($channel): $(jq -r 'map(.channel) | join(", ") | if . == "" then "nothing" else . end' <<< "$targets")"
+          {
+            echo "version=$version"
+            echo "channel=$channel"
+            echo "targets=$targets"
+          } >> "$GITHUB_OUTPUT"
+
+  release:
+    name: Release (${{ matrix.target.channel }})
+    needs: plan
+    if: needs.plan.outputs.targets != '[]'
+    runs-on: ${{ inputs.runs-on }}
+    permissions:
+      contents: write # upload the zip to the GitHub release
+    strategy:
+      fail-fast: false
+      matrix:
+        target: ${{ fromJSON(needs.plan.outputs.targets) }}
+    env:
+      TAG: ${{ github.event.release.tag_name }}
+      VERSION: ${{ needs.plan.outputs.version }}
+      CHANNEL: ${{ matrix.target.channel }}
+      FOLDER: ${{ matrix.target.folder }}-${{ needs.plan.outputs.version }}
+    steps:
+      - name: Checkout the source code
+        uses: actions/checkout@v4
+
+      - name: Set version from release tag
+        env:
+          VERSION_FILE: ${{ inputs.version-file }}
+        run: |
+          set -euo pipefail
+          if [ -z "$VERSION_FILE" ]; then echo "version-file is empty - skipped."; exit 0; fi
+          [ -f "$VERSION_FILE" ] || { echo "::error title=release_steam::version-file '$VERSION_FILE' does not exist. Set the input to the right path, or to '' to skip."; exit 1; }
+          [[ "$VERSION" =~ ^([0-9]+)\.([0-9]+)\.([0-9]+) ]]
+          sed -i -E \
+            -e "s/^(#define MAJOR )[0-9]+/\1${BASH_REMATCH[1]}/" \
+            -e "s/^(#define MINOR )[0-9]+/\1${BASH_REMATCH[2]}/" \
+            -e "s/^(#define PATCH )[0-9]+/\1${BASH_REMATCH[3]}/" \
+            "$VERSION_FILE"
+          grep -E '^#define (MAJOR|MINOR|PATCH) ' "$VERSION_FILE"
+
+      - name: Create meta.cpp
+        env:
+          WORKSHOP_ID: ${{ matrix.target.workshop-id }}
+          NAME: ${{ matrix.target.name }}
+        run: |
+          set -euo pipefail
+          # .NET ticks (100 ns since 0001-01-01), like the Arma 3 launcher writes them
+          ticks=$(( $(date +%s) * 10000000 + 621355968000000000 ))
+          printf 'protocol = 1;\npublishedid = %s;\nname = "%s";\ntimestamp = %s;\n' \
+            "$WORKSHOP_ID" "${NAME//\"/\"\"}" "$ticks" > meta.cpp
+          cat meta.cpp
+
+      - name: Setup HEMTT
+        uses: arma-actions/hemtt@v1
+        env:
+          GITHUB_TOKEN: ${{ github.token }} # authenticated API requests to avoid rate limits
+
+      - name: Run HEMTT script
+        env:
+          SCRIPT: ${{ matrix.target.hemtt-script }}
+        run: |
+          set -euo pipefail
+          if [ -n "$SCRIPT" ] && [ -f ".hemtt/scripts/$SCRIPT.rhai" ]; then
+            hemtt script "$SCRIPT"
+          else
+            echo "No HEMTT script '.hemtt/scripts/$SCRIPT.rhai' - skipped."
+          fi
+
+      - name: Build with HEMTT
+        run: |
+          set -euo pipefail
+          hemtt release --no-archive
+          mv .hemttout/release "$FOLDER"
+          zip -qr "$FOLDER.zip" "$FOLDER"
+
+      - name: Attach zip to the GitHub release
+        if: matrix.target.attach
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: gh release upload "$TAG" "$FOLDER.zip" --clobber
+
+      - name: Prepare Workshop metadata
+        id: meta
+        env:
+          STEAM_DIR: ${{ inputs.steam-dir }}
+          RELEASE_BODY: ${{ github.event.release.body }}
+          RELEASE_URL: ${{ github.event.release.html_url }}
+        run: |
+          set -euo pipefail
+          # First existing file wins - the dev item can override the files in <steam-dir>/dev/
+          pick() { for f in "$@"; do if [ -f "$f" ]; then echo "$f"; return; fi; done; echo ""; }
+          if [ "$CHANNEL" = "dev" ]; then
+            description=$(pick "$STEAM_DIR/dev/description.md" "$STEAM_DIR/description.md")
+            preview=$(pick "$STEAM_DIR/dev/preview.png" "$STEAM_DIR/preview.png")
+          else
+            description=$(pick "$STEAM_DIR/description.md")
+            preview=$(pick "$STEAM_DIR/preview.png")
+          fi
+          echo "Description: ${description:-unchanged}"
+          echo "Preview:     ${preview:-unchanged}"
+          delimiter="CHANGELOG_$(openssl rand -hex 8)"
+          {
+            echo "description=$description"
+            echo "preview=$preview"
+            echo "changelog<<$delimiter"
+            printf '%s\n\n%s\n' "$RELEASE_URL" "$RELEASE_BODY"
+            echo "$delimiter"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Upload to the Steam Workshop
+        uses: A3-AZ/workshop-upload-extended@v1
+        with:
+          item-id: ${{ matrix.target.workshop-id }}
+          content-path: ${{ env.FOLDER }}
+          title: ${{ matrix.target.name }}
+          changelog: ${{ steps.meta.outputs.changelog }}
+          description-file: ${{ steps.meta.outputs.description }}
+          preview-file: ${{ steps.meta.outputs.preview }}
+        env:
+          STEAM_USERNAME: ${{ secrets.steam-username }}
+          STEAM_PASSWORD: ${{ secrets.steam-password }}
+
+  announce:
+    name: Announce on Discord
+    needs: [plan, release]
+    if: needs.plan.outputs.targets != '[]'
+    runs-on: ubuntu-24.04
+    permissions: {}
+    env:
+      WEBHOOK: ${{ secrets.discord-webhook }}
+    steps:
+      - name: Check for a webhook
+        if: env.WEBHOOK == ''
+        run: echo "No discord-webhook passed - no announcement."
+
+      - name: Post the release notes
+        if: env.WEBHOOK != ''
+        uses: SethCohen/github-releases-to-discord@v1.19.0
+        with:
+          webhook_url: ${{ env.WEBHOOK }}
+          content: ${{ needs.plan.outputs.channel == 'dev' && inputs.discord-content-dev || inputs.discord-content-stable }}
+          username: ${{ inputs.discord-username || inputs.mod-name }}
+          avatar_url: ${{ inputs.discord-avatar-url }}
+          footer_title: ${{ inputs.discord-footer-title || inputs.mod-name }}
+          footer_icon_url: ${{ inputs.discord-footer-icon-url }}
+          footer_timestamp: true

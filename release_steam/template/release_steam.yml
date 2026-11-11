@@ -1,0 +1,36 @@
+# Builds the mod with HEMTT and publishes it to the Steam Workshop on every release.
+# Documentation: https://github.com/A3-AZ/a3_workflows/tree/main/release_steam
+#
+# Copy this file to .github/workflows/release_steam.yml and fill in the values below.
+
+name: "Release: Steam"
+
+on:
+  release:
+    types: [prereleased, released]
+
+permissions:
+  contents: write
+
+# Two releases of the same repository never upload at the same time
+concurrency:
+  group: release-steam
+  cancel-in-progress: false
+
+jobs:
+  release:
+    uses: A3-AZ/a3_workflows/.github/workflows/release_steam.yml@v1
+    with:
+      mod-folder: '@example_mod'
+      mod-name: 'Example Mod'
+      workshop-id: '0000000000'
+      # workshop-id-dev: '0000000000'   # optional - without it, pre-releases do nothing
+      # mod-name-dev: 'Example Mod [DEV]'
+      # discord-content-stable: 'Stable Release! ||<@&ROLE_ID>||'
+      # discord-content-dev: 'Dev Release! ||<@&ROLE_ID>||'
+      # discord-avatar-url: 'https://raw.githubusercontent.com/<owner>/<repo>/main/img/logo.png'
+      # discord-footer-icon-url: 'https://raw.githubusercontent.com/<owner>/<repo>/main/img/logo.png'
+    secrets:
+      steam-username: ${{ secrets.STEAM_USERNAME }}
+      steam-password: ${{ secrets.STEAM_PASSWORD }}
+      discord-webhook: ${{ secrets.DISCORD_WEBHOOK_URL }} # optional - remove for no announcement
