@@ -1,0 +1,132 @@
+# Composite action: drafts the next GitHub release with release notes sorted from labelled pull requests.
+# Documentation and the wrapper to copy into a mod repository: draft_release/README.md
+
+name: draft_release
+description: Draft the next GitHub release from labelled pull requests with release-drafter. The config file stays in the mod repository.
+author: A3-AZ
+
+inputs:
+  config-name:
+    description: >-
+      release-drafter config target. A relative path starts in .github/ of the repository,
+      e.g. 'release-drafter.yml' = .github/release-drafter.yml. Also accepts 'owner/repo:/path@ref' and 'file:path'.
+    default: release-drafter.yml
+  skip-forks:
+    description: Skip the run (with a notice) when the repository is a fork, so forks do not draft releases of their own. 'true' or 'false'.
+    default: 'true'
+  token:
+    description: Token for the GitHub API. Needs contents write and pull-requests read on the repository.
+    default: ${{ github.token }}
+  commitish:
+    description: Release target (branch, SHA, tag or pull request ref). Empty = the branch that triggered the run.
+    default: ''
+  from:
+    description: Ref, tag or SHA used as the baseline for the change list. Empty = the last published release.
+    default: ''
+  name:
+    description: Release name. Overrides name-template of the config. Empty = from the config.
+    default: ''
+  tag:
+    description: Release tag. Overrides tag-template of the config. Empty = from the config.
+    default: ''
+  version:
+    description: Release version. Overrides the calculated version. Empty = calculated.
+    default: ''
+  prerelease:
+    description: "'true' = draft a prerelease. Empty = from the config (default false)."
+    default: ''
+  prerelease-identifier:
+    description: Prerelease identifier such as 'rc' or 'beta'. Enables prerelease. Empty = from the config.
+    default: ''
+  include-pre-releases:
+    description: "'true' = prereleases count as the last release. Empty = from the config (default false)."
+    default: ''
+  filter-by-range:
+    description: Only consider previous releases whose tag satisfies this SemVer range. Empty = from the config (default '*').
+    default: ''
+  header:
+    description: Text added before the template body. Empty = from the config.
+    default: ''
+  footer:
+    description: Text added after the template body. Empty = from the config.
+    default: ''
+  dry-run:
+    description: "'true' = only log the release that would be drafted, write nothing."
+    default: ''
+
+outputs:
+  skipped:
+    description: "'true' if the run was skipped because the repository is a fork."
+    value: ${{ steps.check.outputs.skipped }}
+  id:
+    description: ID of the drafted release.
+    value: ${{ steps.drafter.outputs.id }}
+  name:
+    description: Name of the drafted release.
+    value: ${{ steps.drafter.outputs.name }}
+  tag_name:
+    description: Tag of the drafted release.
+    value: ${{ steps.drafter.outputs.tag_name }}
+  body:
+    description: Body (release notes) of the drafted release.
+    value: ${{ steps.drafter.outputs.body }}
+  labels:
+    description: JSON array of the configured labels found on the included pull requests.
+    value: ${{ steps.drafter.outputs.labels }}
+  html_url:
+    description: URL of the drafted release.
+    value: ${{ steps.drafter.outputs.html_url }}
+  resolved_version:
+    description: Version resolved from the categories' semver-increment.
+    value: ${{ steps.drafter.outputs.resolved_version }}
+
+runs:
+  using: composite
+  steps:
+    - name: Check inputs
+      id: check
+      shell: bash
+      env:
+        CONFIG_NAME: ${{ inputs.config-name }}
+        SKIP_FORKS: ${{ inputs.skip-forks }}
+        TOKEN: ${{ inputs.token }}
+        IS_FORK: ${{ github.event.repository.fork }}
+        REPOSITORY: ${{ github.repository }}
+      run: |
+        set -euo pipefail
+        fail() { echo "::error title=draft_release::$1"; exit 1; }
+
+        [ -n "$CONFIG_NAME" ] || fail "Input config-name is empty. Use the default 'release-drafter.yml' or a path to your config."
+        [ -n "$TOKEN" ]       || fail "Input token is empty."
+        case "$SKIP_FORKS" in
+          true|false) ;;
+          *) fail "Input skip-forks must be 'true' or 'false', got '$SKIP_FORKS'." ;;
+        esac
+
+        if [ "$SKIP_FORKS" = "true" ] && [ "$IS_FORK" = "true" ]; then
+          echo "::notice title=draft_release::$REPOSITORY is a fork - no release drafted. Set skip-forks: false to draft anyway."
+          echo "skipped=true" >> "$GITHUB_OUTPUT"
+        else
+          echo "Config: $CONFIG_NAME"
+          echo "skipped=false" >> "$GITHUB_OUTPUT"
+        fi
+
+    - name: Draft the release
+      id: drafter
+      if: steps.check.outputs.skipped == 'false'
+      uses: release-drafter/release-drafter@v7
+      with:
+        config-name: ${{ inputs.config-name }}
+        token: ${{ inputs.token }}
+        commitish: ${{ inputs.commitish }}
+        from: ${{ inputs.from }}
+        name: ${{ inputs.name }}
+        tag: ${{ inputs.tag }}
+        version: ${{ inputs.version }}
+        prerelease: ${{ inputs.prerelease }}
+        prerelease-identifier: ${{ inputs.prerelease-identifier }}
+        include-pre-releases: ${{ inputs.include-pre-releases }}
+        filter-by-range: ${{ inputs.filter-by-range }}
+        header: ${{ inputs.header }}
+        footer: ${{ inputs.footer }}
+        dry-run: ${{ inputs.dry-run }}
