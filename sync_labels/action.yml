@@ -1,0 +1,53 @@
+# Composite action: applies a labels file (default .github/labels.yml) to the labels of the calling repository.
+# Documentation and the wrapper to copy into a mod repository: sync_labels/README.md
+
+name: "Sync: Labels"
+description: Creates, updates and optionally deletes repository labels so they match .github/labels.yml.
+
+inputs:
+  labels-file:
+    description: Path to the labels file, relative to the repository root. The repository must be checked out.
+    default: .github/labels.yml
+  dry-run:
+    description: "'true' = only print what would change, 'false' = apply the changes."
+    default: 'true'
+  token:
+    description: Token used to read and change the labels. Needs issues write permission (read for a dry run).
+    default: ${{ github.token }}
+  repository:
+    description: Repository whose labels are synced, as owner/name.
+    default: ${{ github.repository }}
+
+runs:
+  using: composite
+  steps:
+    - name: Check inputs
+      shell: bash
+      env:
+        LABELS_FILE: ${{ inputs.labels-file }}
+        DRY_RUN: ${{ inputs.dry-run }}
+      run: |
+        set -euo pipefail
+        fail() { echo "::error title=sync_labels::$1"; exit 1; }
+        case "$DRY_RUN" in
+          true|false) ;;
+          *) fail "Input dry-run must be 'true' or 'false', got '$DRY_RUN'." ;;
+        esac
+        [ -f "$LABELS_FILE" ] || fail "Labels file '$LABELS_FILE' does not exist. Check out the repository first (actions/checkout) and check the labels-file input."
+
+    - name: Install PyYAML
+      shell: bash
+      run: python3 -c 'import yaml' 2>/dev/null || python3 -m pip install --quiet pyyaml
+
+    - name: Sync labels
+      shell: bash
+      env:
+        GH_TOKEN: ${{ inputs.token }}
+        GH_REPO: ${{ inputs.repository }}
+        LABELS_FILE: ${{ inputs.labels-file }}
+        DRY_RUN: ${{ inputs.dry-run }}
+      run: |
+        set -euo pipefail
+        args=(--config "$LABELS_FILE")
+        [ "$DRY_RUN" = "true" ] && args+=(--dry-run)
+        python3 "$GITHUB_ACTION_PATH/scripts/sync_labels.py" "${args[@]}"

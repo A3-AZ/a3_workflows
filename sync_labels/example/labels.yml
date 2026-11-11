@@ -1,0 +1,46 @@
+# Example labels file for the sync_labels workflow - copy it to .github/labels.yml of your repository.
+# Documentation: https://github.com/A3-AZ/a3_workflows/tree/main/sync_labels
+#
+# This is the standard pr/* label set. release-drafter sorts pull requests into changelog categories by
+# these labels, and validate_pr_label can require one of them on every pull request. Adjust the list to
+# your project - the file in your repository is the source of truth, this one is only an example.
+#
+# Colors are hex without "#" and MUST be quoted, otherwise YAML reads e.g. 000000 as the number 0.
+# Color scheme: one color per changelog category - lighter shade = less significant label of the same category.
+
+settings:
+  # false: only create/update the labels listed below
+  # true:  also DELETE every label of the repository that is not listed below (e.g. GitHub's default labels)
+  remove_unlisted: true
+
+labels:
+  - name: "pr/new"
+    color: "0e8a16"
+    description: "New feature - Changelog: Features"
+  - name: "pr/improvement"
+    color: "5ebd6b"
+    description: "Improves an existing feature - Changelog: Features"
+  - name: "pr/fix"
+    color: "d73a4a"
+    description: "Fixes a bug - Changelog: Bug Fixes"
+  - name: "pr/settings"
+    color: "1b7c83"
+    description: "Adds or changes CBA settings - Changelog: Settings"
+  - name: "pr/translation"
+    color: "8250df"
+    description: "Stringtable / translation changes - Changelog: Translation"
+  - name: "pr/docs"
+    color: "0075ca"
+    description: "Documentation only - Changelog: Documentation"
+  - name: "pr/maintenance"
+    color: "57606a"
+    description: "Tooling, workflows, dependencies - Changelog: Maintenance"
+  - name: "pr/cleanup"
+    color: "8c959f"
+    description: "Refactoring / cleanup without functional change - Changelog: Maintenance"
+  - name: "pr/breaking"
+    color: "e36209"
+    description: "May break existing missions or setups - Changelog: Breaking Changes (add to a main label)"
+  - name: "pr/ignore"
+    color: "e1e4e8"
+    description: "Excluded from the changelog"

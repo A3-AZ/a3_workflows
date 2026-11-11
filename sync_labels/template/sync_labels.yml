@@ -1,0 +1,33 @@
+# Applies the labels from .github/labels.yml to this repository.
+# Documentation: https://github.com/A3-AZ/a3_workflows/tree/main/sync_labels
+#
+# Copy this file to .github/workflows/sync_labels.yml.
+# Run it manually: Actions tab -> "Sync: Labels" -> Run workflow. The first run is a dry run by default.
+# Whether unlisted labels get deleted is controlled by settings.remove_unlisted in .github/labels.yml.
+
+name: "Sync: Labels"
+
+on:
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "Dry run - only show what would change"
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+  issues: write # labels are managed through the issues permission
+
+jobs:
+  sync-labels:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout the source code
+        uses: actions/checkout@v7
+
+      - name: Sync labels
+        uses: A3-AZ/a3_workflows/sync_labels@v1
+        with:
+          dry-run: ${{ inputs.dry_run }}
+          # labels-file: .github/labels.yml

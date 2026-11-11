@@ -1,0 +1,37 @@
+# CI of this repository: unit tests of the sync_labels script and a dry run of the action against the example file
+
+name: "Test: sync_labels"
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - sync_labels/**
+      - .github/workflows/test_sync_labels.yml
+  pull_request:
+    paths:
+      - sync_labels/**
+      - .github/workflows/test_sync_labels.yml
+
+permissions:
+  contents: read
+  issues: read # list the labels for the dry run
+
+jobs:
+  test:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout the source code
+        uses: actions/checkout@v7
+
+      - name: Install PyYAML
+        run: python3 -c 'import yaml' 2>/dev/null || python3 -m pip install --quiet pyyaml
+
+      - name: Run unit tests
+        run: python3 -m unittest discover -s sync_labels/tests -v
+
+      - name: Dry run against the example file
+        uses: ./sync_labels
+        with:
+          labels-file: sync_labels/example/labels.yml
+          dry-run: 'true'
