@@ -1,0 +1,74 @@
+# CI of this repository: runs update_translation_issue in dry-run mode against a real mod.
+# Dry-run never creates or edits issues, so this test only reads.
+
+name: "Test: update_translation_issue"
+
+on:
+  pull_request:
+    paths:
+      - 'update_translation_issue/**'
+      - '.github/workflows/test_update_translation_issue.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'update_translation_issue/**'
+      - '.github/workflows/test_update_translation_issue.yml'
+
+permissions:
+  contents: read
+  issues: read
+
+jobs:
+  test:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout this repository
+        uses: actions/checkout@v7
+        with:
+          path: a3_workflows
+
+      - name: Checkout a mod with stringtables
+        uses: actions/checkout@v7
+        with:
+          repository: CVO-Org/Zorns-Mission-Utility-Mod
+          path: mod
+
+      - name: Run the action (dry-run)
+        id: run
+        uses: ./a3_workflows/update_translation_issue
+        with:
+          path: mod
+          title: 'Translations (update_translation_issue test)'
+          dry-run: 'true'
+
+      - name: Check the result
+        env:
+          RESULT: ${{ steps.run.outputs.result }}
+          ISSUE: ${{ steps.run.outputs.issue-number }}
+          BODY_FILE: ${{ steps.run.outputs.body-file }}
+        run: |
+          fail() { echo "::error::$1"; exit 1; }
+          [ "$RESULT" = "created" ] || fail "Expected result 'created' (no such issue exists), got '$RESULT'"
+          [ -z "$ISSUE" ] || fail "Dry-run must not create an issue, got #$ISSUE"
+          grep -q '^| English ' "$BODY_FILE" || fail "Coverage table is missing"
+          grep -q '^Translation completeness per language\.$' "$BODY_FILE" || fail "Default header is missing"
+          grep -qF '**[Translation guide](https://ace3.acemod.org/wiki/development/how-to-translate-ace3.html)**' "$BODY_FILE" || fail "Default guide link is missing"
+          grep -q "^_Coverage last changed in ${GITHUB_SHA}_\$" "$BODY_FILE" || fail "SHA line is missing"
+          echo "All checks passed"
+
+      - name: Run the action without a HEMTT project
+        id: no-project
+        continue-on-error: true
+        uses: ./a3_workflows/update_translation_issue
+        with:
+          path: a3_workflows
+          dry-run: 'true'
+
+      - name: Check that it failed early
+        env:
+          OUTCOME: ${{ steps.no-project.outcome }}
+        run: |
+          if [ "$OUTCOME" != "failure" ]; then
+            echo "::error::Expected the run without a HEMTT project to fail, got '$OUTCOME'"
+            exit 1
+          fi
