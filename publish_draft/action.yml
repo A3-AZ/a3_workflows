@@ -89,15 +89,21 @@ runs:
         set -euo pipefail
         fail() { echo "::error title=publish_draft::$1"; exit 1; }
 
-        gh api "repos/$GH_REPO/releases" --paginate \
-          --jq '.[] | select(.draft) | {id, tag_name, name, target_commitish}' | jq -c . > "$RUNNER_TEMP/drafts.jsonl"
-        if [ -n "$DRAFT_TAG" ]; then
-          jq -c --arg t "$DRAFT_TAG" 'select(.tag_name == $t)' "$RUNNER_TEMP/drafts.jsonl" > "$RUNNER_TEMP/draft.jsonl"
-        else
-          cp "$RUNNER_TEMP/drafts.jsonl" "$RUNNER_TEMP/draft.jsonl"
-        fi
+        # The release list lags a few seconds behind a draft created just before (e.g. by draft_changelog) - retry
+        for attempt in 1 2 3 4 5 6; do
+          gh api "repos/$GH_REPO/releases" --paginate \
+            --jq '.[] | select(.draft) | {id, tag_name, name, target_commitish}' | jq -c . > "$RUNNER_TEMP/drafts.jsonl"
+          if [ -n "$DRAFT_TAG" ]; then
+            jq -c --arg t "$DRAFT_TAG" 'select(.tag_name == $t)' "$RUNNER_TEMP/drafts.jsonl" > "$RUNNER_TEMP/draft.jsonl"
+          else
+            cp "$RUNNER_TEMP/drafts.jsonl" "$RUNNER_TEMP/draft.jsonl"
+          fi
+          count=$(wc -l < "$RUNNER_TEMP/draft.jsonl")
+          if [ "$count" -gt 0 ] || [ "$attempt" -eq 6 ]; then break; fi
+          echo "No matching draft listed yet - retrying in 5 seconds ($attempt/5)"
+          sleep 5
+        done
 
-        count=$(wc -l < "$RUNNER_TEMP/draft.jsonl")
         if [ "$count" -ne 1 ]; then
           echo "Drafts of $GH_REPO:"
           jq -r '"  \(.tag_name)  \(.name)"' "$RUNNER_TEMP/drafts.jsonl"

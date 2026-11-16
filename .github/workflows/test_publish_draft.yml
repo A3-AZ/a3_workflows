@@ -114,5 +114,5 @@ jobs:
         run: |
           gh api -X DELETE "repos/$GH_REPO/releases/$ID" && echo "Deleted release $ID"
           for t in "$DRAFT_TAG-rc.1" "$DRAFT_TAG"; do
-            gh api -X DELETE "repos/$GH_REPO/git/refs/tags/$t" 2>/dev/null && echo "Deleted tag $t" || true
+            if gh api -X DELETE "repos/$GH_REPO/git/refs/tags/$t" 2>/dev/null; then echo "Deleted tag $t"; fi
           done
