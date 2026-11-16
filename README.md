@@ -122,6 +122,7 @@ Anything else - bug fixes, new optional inputs with a sensible default, improved
 | [`sync_labels`](sync_labels/) | composite action | Apply `.github/labels.yml` to the repository's labels |
 | [`update_translation_issue`](update_translation_issue/) | composite action | Keep a GitHub issue updated with `hemtt localization coverage` |
 | [`draft_changelog`](draft_changelog/) | composite action | Keep a draft release with the changelog from labelled pull requests up to date |
+| [`publish_draft`](publish_draft/) | composite action | Publish the draft release by hand as a release or a `-rc.N` pre-release, optionally bumping minor or major |
 | [`release_github`](release_github/) | composite action | Build with HEMTT and attach the zip to the GitHub release |
 | [`release_steam`](release_steam/) | reusable workflow | Build with HEMTT, attach the zip and upload to the Steam Workshop - stable and optional dev item, Workshop page from `.steam/`, Discord announcement |
 ## Contributing
