@@ -231,13 +231,6 @@ jobs:
           mv .hemttout/release "$FOLDER"
           zip -qr "$FOLDER.zip" "$FOLDER"
 
-      - name: Attach zip to the GitHub release
-        if: matrix.target.attach
-        env:
-          GH_TOKEN: ${{ github.token }}
-          GH_REPO: ${{ github.repository }}
-        run: gh release upload "$TAG" "$FOLDER.zip" --clobber
-
       - name: Prepare Workshop metadata
         id: meta
         env:
@@ -278,6 +271,14 @@ jobs:
         env:
           STEAM_USERNAME: ${{ secrets.steam-username }}
           STEAM_PASSWORD: ${{ secrets.steam-password }}
+
+      # Only after a successful upload, so a failed upload leaves the release without a zip
+      - name: Attach zip to the GitHub release
+        if: matrix.target.attach
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: gh release upload "$TAG" "$FOLDER.zip" --clobber
 
   announce:
     name: Announce on Discord

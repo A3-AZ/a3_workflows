@@ -20,6 +20,7 @@ For each item the workflow:
 3. runs the HEMTT script `hemtt-script-stable` / `hemtt-script-dev`, if `.hemtt/scripts/<name>.rhai` exists (e.g. to set a dev flag)
 4. builds with `hemtt release` and zips the result as `<mod-folder>-<version>.zip`
 5. uploads it with [workshop-upload-extended](https://github.com/A3-AZ/workshop-upload-extended): the change note is a link to the GitHub release plus the release notes
+6. attaches the zip to the GitHub release (stable build on a full release, dev build on a pre-release) - only after a successful upload, so a failed upload leaves the release without a zip. Re-running the job replaces the zip.
 
 ## Triggers
 
@@ -92,3 +93,4 @@ The wrapper must grant `contents: write` (to upload the zip to the release).
 ## Changelog
 
 - Initial version: stable and dev item in one workflow, Workshop title/description/preview from the repository, Discord announcement with separate texts for stable and dev.
+- The zip is attached to the GitHub release only after the Workshop upload succeeded, no longer before it.
