@@ -8,8 +8,8 @@ Builds the mod with HEMTT on every GitHub release and publishes it to the Steam 
 
 | Release event | Stable item | Dev item | Zip on the GitHub release | Discord |
 |---|---|---|---|---|
-| Pre-release | - | updated, if `workshop-id-dev` is set | dev build | "Dev Release!" |
-| Full release | updated | updated as well, if `workshop-id-dev` is set - so dev never falls behind stable | stable build | "Stable Release!" |
+| Pre-release | - | updated, if `workshop-id-dev` is set | dev build | "<mod-name> Dev got updated - Version 1.2.3." |
+| Full release | updated | updated as well, if `workshop-id-dev` is set - so dev never falls behind stable | stable build | "<mod-name> Stable got updated - Version 1.2.3." |
 
 A pre-release that is later promoted to a full release triggers the full release as well. Without `workshop-id-dev`, a pre-release does nothing.
 
@@ -40,8 +40,8 @@ For each item the workflow:
 | `hemtt-script-stable` | `set_RELEASE_VERSION_STABLE` | HEMTT script before the stable build, skipped if it does not exist |
 | `hemtt-script-dev` | `set_RELEASE_VERSION_DEV` | HEMTT script before the dev build, skipped if it does not exist |
 | `steam-dir` | `.steam` | Folder with the Workshop page files, see below |
-| `discord-content-stable` | `Stable Release!` | Message text above the release notes for a full release, e.g. with a role ping |
-| `discord-content-dev` | `Dev Release!` | Message text above the release notes for a pre-release |
+| `discord-message-stable` | `<mod-name> Stable got updated - Version <version>.` | Message text above the release notes for a full release, e.g. with a role ping |
+| `discord-message-dev` | `<mod-name> Dev got updated - Version <version>.` | Message text above the release notes for a pre-release |
 | `discord-username` | `<mod-name>` | Name of the Discord bot |
 | `discord-avatar-url` | `''` | Avatar of the Discord bot |
 | `discord-footer-title` | `<mod-name>` | Footer text of the Discord message |
@@ -67,7 +67,17 @@ A file that does not exist leaves that field unchanged on Steam. Once a file exi
 |---|---|---|
 | `steam-username` | yes | Steam account that is a contributor of the Workshop items |
 | `steam-password` | yes | Its password |
-| `discord-webhook` | no | Discord webhook URL. Not passed = no announcement |
+| `discord-webhook` | no | Discord webhook URL, or up to 5 URLs separated by spaces, commas or newlines. Not passed = no announcement |
+
+### Several Discord webhooks
+
+The template passes two secrets, so that one can be set on the organization and the other on the repository:
+
+```yaml
+discord-webhook: ${{ secrets.DISCORD_WEBHOOK_URL }} ${{ secrets.DISCORD_WEBHOOK_URL_EXTENDED }}
+```
+
+The workflow splits the value into separate URLs, drops empty and duplicate ones and posts to the first 5 (more give a warning). A secret that is not set arrives empty and is skipped. A single secret may also hold several URLs separated by spaces. Every webhook gets the same message, so a role ping in `discord-message-stable` / `discord-message-dev` only works on the server the role belongs to.
 
 The Steam account must have **Steam Guard disabled** - use a dedicated account. Secrets are passed explicitly in the wrapper; organization secrets work too, except for private repositories of an organization on the GitHub Free plan, where they arrive empty. The workflow checks the Steam secrets before it builds.
 
@@ -86,7 +96,7 @@ The wrapper must grant `contents: write` (to upload the zip to the release).
 
 1. Copy [`template/release_steam.yml`](template/release_steam.yml) to `.github/workflows/release_steam.yml` of your repository.
 2. Fill in `mod-folder`, `mod-name`, `workshop-id` and, if you have a dev item, `workshop-id-dev`.
-3. Create the secrets `STEAM_USERNAME`, `STEAM_PASSWORD` and, optionally, `DISCORD_WEBHOOK_URL`.
+3. Create the secrets `STEAM_USERNAME`, `STEAM_PASSWORD` and, optionally, `DISCORD_WEBHOOK_URL` and/or `DISCORD_WEBHOOK_URL_EXTENDED`.
 4. Optionally add `.steam/description.md` and `.steam/preview.png`.
 5. Remove the old release and Discord notice workflows, so a release is not published or announced twice.
 
@@ -94,3 +104,6 @@ The wrapper must grant `contents: write` (to upload the zip to the release).
 
 - Initial version: stable and dev item in one workflow, Workshop title/description/preview from the repository, Discord announcement with separate texts for stable and dev.
 - The zip is attached to the GitHub release only after the Workshop upload succeeded, no longer before it.
+- `discord-webhook` accepts up to 5 URLs; the template passes `DISCORD_WEBHOOK_URL` and `DISCORD_WEBHOOK_URL_EXTENDED`.
+- The default Discord message text is now `<mod-name> Stable/Dev got updated - Version <version>.`, instead of `Stable Release!` / `Dev Release!`.
+- **Breaking:** `discord-content-stable` / `discord-content-dev` are renamed to `discord-message-stable` / `discord-message-dev`. A wrapper that still passes the old names fails.

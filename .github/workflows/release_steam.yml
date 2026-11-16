@@ -46,14 +46,14 @@ on:
         description: Folder with description.md and preview.png for the Workshop page. dev/ inside it overrides them for the dev item.
         type: string
         default: .steam
-      discord-content-stable:
-        description: Discord message text above the release notes for a stable release (e.g. add a role ping).
+      discord-message-stable:
+        description: Discord message text above the release notes for a stable release (e.g. add a role ping). Empty = "<mod-name> Stable got updated - Version <version>."
         type: string
-        default: Stable Release!
-      discord-content-dev:
-        description: Discord message text above the release notes for a dev release.
+        default: ''
+      discord-message-dev:
+        description: Discord message text above the release notes for a dev release. Empty = "<mod-name> Dev got updated - Version <version>."
         type: string
-        default: Dev Release!
+        default: ''
       discord-username:
         description: Name of the Discord bot. Empty = mod-name.
         type: string
@@ -82,7 +82,7 @@ on:
         description: Password of that account.
         required: true
       discord-webhook:
-        description: Discord webhook URL. Not set = no announcement.
+        description: Discord webhook URL, or up to 5 URLs separated by spaces, commas or newlines. Not set = no announcement.
         required: false
 
 jobs:
@@ -287,20 +287,110 @@ jobs:
     runs-on: ubuntu-24.04
     permissions: {}
     env:
-      WEBHOOK: ${{ secrets.discord-webhook }}
+      USERNAME: ${{ inputs.discord-username || inputs.mod-name }}
+      FOOTER_TITLE: ${{ inputs.discord-footer-title || inputs.mod-name }}
     steps:
-      - name: Check for a webhook
-        if: env.WEBHOOK == ''
-        run: echo "No discord-webhook passed - no announcement."
+      # discord-webhook may hold several URLs, separated by spaces, commas or newlines.
+      # Each one goes into its own slot WEBHOOK_1..5; empty and duplicate entries are dropped.
+      - name: Split the webhooks
+        env:
+          WEBHOOKS: ${{ secrets.discord-webhook }}
+        run: |
+          set -f # no glob expansion of the unquoted split below
+          max=5
+          count=0
+          seen=" "
+          for url in $(printf '%s' "$WEBHOOKS" | tr ',' ' '); do
+            case "$seen" in *" $url "*) continue ;; esac
+            seen="$seen$url "
+            if [ "$count" -ge "$max" ]; then
+              echo "::warning::More than $max Discord webhooks passed - only the first $max get the announcement."
+              break
+            fi
+            count=$((count + 1))
+            echo "::add-mask::$url"
+            echo "WEBHOOK_$count=$url" >> "$GITHUB_ENV"
+          done
+          if [ "$count" -eq 0 ]; then
+            echo "No discord-webhook passed - no announcement."
+          else
+            echo "Announcing to $count webhook(s)."
+          fi
 
-      - name: Post the release notes
-        if: env.WEBHOOK != ''
+      - name: Build the message text
+        if: env.WEBHOOK_1 != ''
+        env:
+          MOD_NAME: ${{ inputs.mod-name }}
+          CHANNEL: ${{ needs.plan.outputs.channel }}
+          VERSION: ${{ needs.plan.outputs.version }}
+          CONTENT_STABLE: ${{ inputs.discord-message-stable }}
+          CONTENT_DEV: ${{ inputs.discord-message-dev }}
+        run: |
+          set -euo pipefail
+          if [ "$CHANNEL" = "dev" ]; then label=Dev; content="$CONTENT_DEV"; else label=Stable; content="$CONTENT_STABLE"; fi
+          header="$MOD_NAME $label got updated - Version $VERSION."
+          {
+            echo "CONTENT<<DISCORD_CONTENT_EOF"
+            echo "${content:-$header}"
+            echo "DISCORD_CONTENT_EOF"
+          } >> "$GITHUB_ENV"
+
+      - name: Post the release notes (webhook 1)
+        if: env.WEBHOOK_1 != ''
         uses: SethCohen/github-releases-to-discord@v1.19.0
         with:
-          webhook_url: ${{ env.WEBHOOK }}
-          content: ${{ needs.plan.outputs.channel == 'dev' && inputs.discord-content-dev || inputs.discord-content-stable }}
-          username: ${{ inputs.discord-username || inputs.mod-name }}
+          webhook_url: ${{ env.WEBHOOK_1 }}
+          content: ${{ env.CONTENT }}
+          username: ${{ env.USERNAME }}
           avatar_url: ${{ inputs.discord-avatar-url }}
-          footer_title: ${{ inputs.discord-footer-title || inputs.mod-name }}
+          footer_title: ${{ env.FOOTER_TITLE }}
+          footer_icon_url: ${{ inputs.discord-footer-icon-url }}
+          footer_timestamp: true
+
+      - name: Post the release notes (webhook 2)
+        if: env.WEBHOOK_2 != ''
+        uses: SethCohen/github-releases-to-discord@v1.19.0
+        with:
+          webhook_url: ${{ env.WEBHOOK_2 }}
+          content: ${{ env.CONTENT }}
+          username: ${{ env.USERNAME }}
+          avatar_url: ${{ inputs.discord-avatar-url }}
+          footer_title: ${{ env.FOOTER_TITLE }}
+          footer_icon_url: ${{ inputs.discord-footer-icon-url }}
+          footer_timestamp: true
+
+      - name: Post the release notes (webhook 3)
+        if: env.WEBHOOK_3 != ''
+        uses: SethCohen/github-releases-to-discord@v1.19.0
+        with:
+          webhook_url: ${{ env.WEBHOOK_3 }}
+          content: ${{ env.CONTENT }}
+          username: ${{ env.USERNAME }}
+          avatar_url: ${{ inputs.discord-avatar-url }}
+          footer_title: ${{ env.FOOTER_TITLE }}
+          footer_icon_url: ${{ inputs.discord-footer-icon-url }}
+          footer_timestamp: true
+
+      - name: Post the release notes (webhook 4)
+        if: env.WEBHOOK_4 != ''
+        uses: SethCohen/github-releases-to-discord@v1.19.0
+        with:
+          webhook_url: ${{ env.WEBHOOK_4 }}
+          content: ${{ env.CONTENT }}
+          username: ${{ env.USERNAME }}
+          avatar_url: ${{ inputs.discord-avatar-url }}
+          footer_title: ${{ env.FOOTER_TITLE }}
+          footer_icon_url: ${{ inputs.discord-footer-icon-url }}
+          footer_timestamp: true
+
+      - name: Post the release notes (webhook 5)
+        if: env.WEBHOOK_5 != ''
+        uses: SethCohen/github-releases-to-discord@v1.19.0
+        with:
+          webhook_url: ${{ env.WEBHOOK_5 }}
+          content: ${{ env.CONTENT }}
+          username: ${{ env.USERNAME }}
+          avatar_url: ${{ inputs.discord-avatar-url }}
+          footer_title: ${{ env.FOOTER_TITLE }}
           footer_icon_url: ${{ inputs.discord-footer-icon-url }}
           footer_timestamp: true
