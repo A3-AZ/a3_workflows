@@ -1,0 +1,119 @@
+# Tests publish_draft: unit tests of the tag calculation, then a temporary draft of this repository
+# that is checked in dry run, published as a pre-release, and deleted again together with its tag.
+
+name: "Test: publish_draft"
+
+on:
+  pull_request:
+    paths:
+      - publish_draft/**
+      - .github/workflows/test_publish_draft.yml
+  push:
+    branches: [main]
+    paths:
+      - publish_draft/**
+      - .github/workflows/test_publish_draft.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  # Commit under test - the pull request head, not the temporary merge commit
+  TEST_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+
+jobs:
+  unit:
+    name: Unit tests
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout the source code
+        uses: actions/checkout@v7
+
+      - name: Run the tag calculation tests
+        run: bash publish_draft/tests/test_next_tag.sh
+
+  real-draft:
+    name: Temporary draft, published and deleted
+    # Pull requests from forks get a read-only token
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write # create, publish and delete the test release and its tag
+    concurrency:
+      group: test_publish_draft-real-draft
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+      # Version far away from real releases, unique per run
+      DRAFT_TAG: v0.0.${{ github.run_id }}
+    steps:
+      - name: Checkout the source code
+        uses: actions/checkout@v7
+
+      - name: Create a test draft
+        id: create
+        run: |
+          set -euo pipefail
+          id=$(gh api -X POST "repos/$GH_REPO/releases" -f tag_name="$DRAFT_TAG" -f name="Test $DRAFT_TAG" \
+            -f target_commitish="$TEST_SHA" -F draft=true --jq .id)
+          echo "id=$id" >> "$GITHUB_OUTPUT"
+
+      # Bumps are covered by the unit tests - a bump here would hit this repository's real v1.0.0
+      - name: Dry run as a release
+        id: dry
+        uses: ./publish_draft
+        with:
+          type: release
+          bump: keep
+          draft-tag: ${{ env.DRAFT_TAG }}
+          dry-run: 'true'
+
+      - name: Unknown draft tag (must fail)
+        id: missing
+        continue-on-error: true
+        uses: ./publish_draft
+        with:
+          type: release
+          draft-tag: v0.0.0-no-such-draft
+          dry-run: 'true'
+
+      - name: Publish as a pre-release
+        id: pre
+        uses: ./publish_draft
+        with:
+          type: pre-release
+          draft-tag: ${{ env.DRAFT_TAG }}
+
+      - name: Check the results
+        env:
+          ID: ${{ steps.create.outputs.id }}
+          DRY_TAG: ${{ steps.dry.outputs.tag }}
+          DRY_URL: ${{ steps.dry.outputs.html_url }}
+          MISSING: ${{ steps.missing.outcome }}
+          PRE_TAG: ${{ steps.pre.outputs.tag }}
+          PRE_NAME: ${{ steps.pre.outputs.name }}
+          PRE_ID: ${{ steps.pre.outputs.id }}
+        run: |
+          set -euo pipefail
+          fail() { echo "::error::$1"; exit 1; }
+          [ "$DRY_TAG" = "$DRAFT_TAG" ] || fail "dry run tag is '$DRY_TAG', expected $DRAFT_TAG"
+          [ -z "$DRY_URL" ]          || fail "dry run returned a URL - it published something"
+          [ "$MISSING" = "failure" ] || fail "an unknown draft tag did not fail (outcome: $MISSING)"
+          [ "$PRE_ID" = "$ID" ]      || fail "published release $PRE_ID, expected the test draft $ID"
+          [ "$PRE_TAG" = "$DRAFT_TAG-rc.1" ]      || fail "pre-release tag is '$PRE_TAG', expected $DRAFT_TAG-rc.1"
+          [ "$PRE_NAME" = "Test $DRAFT_TAG-rc.1" ] || fail "release name is '$PRE_NAME', expected the tag swapped inside it"
+          gh api "repos/$GH_REPO/releases/$ID" --jq '{draft, prerelease, tag_name, target_commitish}' | tee release.json
+          [ "$(jq -r .draft release.json)" = "false" ]     || fail "release is still a draft"
+          [ "$(jq -r .prerelease release.json)" = "true" ] || fail "release is not a pre-release"
+          [ "$(jq -r .tag_name release.json)" = "$PRE_TAG" ] || fail "tag not changed on the release"
+
+      - name: Delete the test release and its tag
+        if: always() && steps.create.outputs.id != ''
+        env:
+          ID: ${{ steps.create.outputs.id }}
+        run: |
+          gh api -X DELETE "repos/$GH_REPO/releases/$ID" && echo "Deleted release $ID"
+          for t in "$DRAFT_TAG-rc.1" "$DRAFT_TAG"; do
+            if gh api -X DELETE "repos/$GH_REPO/git/refs/tags/$t" 2>/dev/null; then echo "Deleted tag $t"; fi
+          done

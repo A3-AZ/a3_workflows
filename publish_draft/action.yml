@@ -1,0 +1,196 @@
+# Composite action: publishes the draft GitHub release as a release or as a pre-release (-rc.N).
+# Documentation and the wrapper to copy into a mod repository: publish_draft/README.md
+
+name: publish_draft
+description: Publish the draft GitHub release as a release or a numbered pre-release, optionally with a minor or major version bump.
+author: A3-AZ
+
+inputs:
+  type:
+    description: "'release' = publish as a full release, 'pre-release' = publish as a pre-release with the tag <version>-<identifier>.<N>."
+    default: ''
+  bump:
+    description: "'keep' = the draft's version, 'minor' = x.Y+1.0, 'major' = X+1.0.0."
+    default: keep
+  prerelease-identifier:
+    description: Identifier of pre-release tags, e.g. 'rc' -> v1.2.4-rc.1. Letters, digits and '-'.
+    default: rc
+  draft-tag:
+    description: Tag of the draft to publish. Empty = the only draft of the repository (fails if there are several).
+    default: ''
+  dry-run:
+    description: "'true' = only log what would be published, change nothing."
+    default: 'false'
+  token:
+    description: >-
+      Token for the GitHub API. Needs contents write. A release published with the default GITHUB_TOKEN does not
+      start other workflows (release_steam, release_github) - pass a personal access token or GitHub App token for that.
+    default: ${{ github.token }}
+
+outputs:
+  id:
+    description: ID of the published release.
+    value: ${{ steps.draft.outputs.id }}
+  tag:
+    description: Tag the release was published under.
+    value: ${{ steps.plan.outputs.tag }}
+  name:
+    description: Name of the published release.
+    value: ${{ steps.plan.outputs.name }}
+  prerelease:
+    description: "'true' if published as a pre-release."
+    value: ${{ steps.plan.outputs.prerelease }}
+  html_url:
+    description: URL of the published release. Empty on a dry run.
+    value: ${{ steps.publish.outputs.html_url }}
+
+runs:
+  using: composite
+  steps:
+    - name: Check inputs
+      shell: bash
+      env:
+        TYPE: ${{ inputs.type }}
+        BUMP: ${{ inputs.bump }}
+        DRY_RUN: ${{ inputs.dry-run }}
+        TOKEN: ${{ inputs.token }}
+        DEFAULT_TOKEN: ${{ inputs.token == github.token }}
+      run: |
+        set -euo pipefail
+        fail() { echo "::error title=publish_draft::$1"; exit 1; }
+
+        case "$TYPE" in
+          release|pre-release) ;;
+          '') fail "Input type is empty. Use 'release' or 'pre-release'." ;;
+          *)  fail "Input type must be 'release' or 'pre-release', got '$TYPE'." ;;
+        esac
+        case "$BUMP" in
+          keep|minor|major) ;;
+          *) fail "Input bump must be 'keep', 'minor' or 'major', got '$BUMP'." ;;
+        esac
+        case "$DRY_RUN" in
+          true|false) ;;
+          *) fail "Input dry-run must be 'true' or 'false', got '$DRY_RUN'." ;;
+        esac
+        [ -n "$TOKEN" ] || fail "Input token is empty. Is the secret set in this repository?"
+
+        if [ "$DEFAULT_TOKEN" = "true" ]; then
+          echo "::warning title=publish_draft::Publishing with the default GITHUB_TOKEN - release workflows such as release_steam or release_github will not start. Pass a personal access token or GitHub App token as 'token'."
+        fi
+
+    - name: Find the draft
+      id: draft
+      shell: bash
+      env:
+        GH_TOKEN: ${{ inputs.token }}
+        GH_REPO: ${{ github.repository }}
+        DRAFT_TAG: ${{ inputs.draft-tag }}
+      run: |
+        set -euo pipefail
+        fail() { echo "::error title=publish_draft::$1"; exit 1; }
+
+        # The release list lags a few seconds behind a draft created just before (e.g. by draft_changelog) - retry
+        for attempt in 1 2 3 4 5 6; do
+          gh api "repos/$GH_REPO/releases" --paginate \
+            --jq '.[] | select(.draft) | {id, tag_name, name, target_commitish}' | jq -c . > "$RUNNER_TEMP/drafts.jsonl"
+          if [ -n "$DRAFT_TAG" ]; then
+            jq -c --arg t "$DRAFT_TAG" 'select(.tag_name == $t)' "$RUNNER_TEMP/drafts.jsonl" > "$RUNNER_TEMP/draft.jsonl"
+          else
+            cp "$RUNNER_TEMP/drafts.jsonl" "$RUNNER_TEMP/draft.jsonl"
+          fi
+          count=$(wc -l < "$RUNNER_TEMP/draft.jsonl")
+          if [ "$count" -gt 0 ] || [ "$attempt" -eq 6 ]; then break; fi
+          echo "No matching draft listed yet - retrying in 5 seconds ($attempt/5)"
+          sleep 5
+        done
+
+        if [ "$count" -ne 1 ]; then
+          echo "Drafts of $GH_REPO:"
+          jq -r '"  \(.tag_name)  \(.name)"' "$RUNNER_TEMP/drafts.jsonl"
+          if [ "$count" -eq 0 ] && [ -n "$DRAFT_TAG" ]; then
+            fail "No draft release with the tag '$DRAFT_TAG'."
+          elif [ "$count" -eq 0 ]; then
+            fail "No draft release found. Merge a pull request or run draft_changelog first."
+          else
+            fail "$count draft releases with the tag '${DRAFT_TAG:-*}' - set draft-tag to the one to publish, or delete the others."
+          fi
+        fi
+
+        draft=$(cat "$RUNNER_TEMP/draft.jsonl")
+        echo "Draft: $(jq -r '"\(.tag_name) (\(.name)) on \(.target_commitish)"' <<< "$draft")"
+        {
+          echo "id=$(jq -r .id <<< "$draft")"
+          echo "tag=$(jq -r .tag_name <<< "$draft")"
+          echo "name=$(jq -r '.name // ""' <<< "$draft")"
+        } >> "$GITHUB_OUTPUT"
+
+    - name: Calculate the tag
+      id: plan
+      shell: bash
+      env:
+        GH_TOKEN: ${{ inputs.token }}
+        GH_REPO: ${{ github.repository }}
+        TYPE: ${{ inputs.type }}
+        BUMP: ${{ inputs.bump }}
+        IDENT: ${{ inputs.prerelease-identifier }}
+        DRAFT_TAG: ${{ steps.draft.outputs.tag }}
+        DRAFT_NAME: ${{ steps.draft.outputs.name }}
+        SCRIPT: ${{ github.action_path }}/scripts/next_tag.sh
+      run: |
+        set -euo pipefail
+
+        # Every tag in use: git tags plus the tags of published releases (drafts have no git tag yet)
+        {
+          gh api "repos/$GH_REPO/tags" --paginate --jq '.[].name'
+          gh api "repos/$GH_REPO/releases" --paginate --jq '.[] | select(.draft | not) | .tag_name'
+        } | sort -u > "$RUNNER_TEMP/tags.txt"
+
+        if ! tag=$(bash "$SCRIPT" "$DRAFT_TAG" "$TYPE" "$BUMP" "$IDENT" < "$RUNNER_TEMP/tags.txt" 2> "$RUNNER_TEMP/next_tag.err"); then
+          echo "::error title=publish_draft::$(cat "$RUNNER_TEMP/next_tag.err")"
+          exit 1
+        fi
+
+        # Keep a custom release name, only swap the old tag inside it
+        if [ -z "$DRAFT_NAME" ] || [ "$DRAFT_NAME" = "$DRAFT_TAG" ]; then
+          name="$tag"
+        else
+          name="${DRAFT_NAME//"$DRAFT_TAG"/"$tag"}"
+        fi
+
+        prerelease=false
+        [ "$TYPE" = "pre-release" ] && prerelease=true
+
+        echo "Tag:        $DRAFT_TAG -> $tag"
+        echo "Name:       $DRAFT_NAME -> $name"
+        echo "Pre-release: $prerelease"
+        {
+          echo "tag=$tag"
+          echo "name=$name"
+          echo "prerelease=$prerelease"
+        } >> "$GITHUB_OUTPUT"
+
+    - name: Publish the release
+      id: publish
+      if: inputs.dry-run != 'true'
+      shell: bash
+      env:
+        GH_TOKEN: ${{ inputs.token }}
+        GH_REPO: ${{ github.repository }}
+        ID: ${{ steps.draft.outputs.id }}
+        TAG: ${{ steps.plan.outputs.tag }}
+        NAME: ${{ steps.plan.outputs.name }}
+        PRERELEASE: ${{ steps.plan.outputs.prerelease }}
+      run: |
+        set -euo pipefail
+        # One request: the tag is created on the draft's target when the release is published
+        url=$(gh api -X PATCH "repos/$GH_REPO/releases/$ID" \
+          -f tag_name="$TAG" -f name="$NAME" -F draft=false -F prerelease="$PRERELEASE" --jq .html_url)
+        echo "::notice title=publish_draft::Published $TAG: $url"
+        echo "html_url=$url" >> "$GITHUB_OUTPUT"
+
+    - name: Skip publishing
+      if: inputs.dry-run == 'true'
+      shell: bash
+      env:
+        TAG: ${{ steps.plan.outputs.tag }}
+      run: echo "::notice title=publish_draft::dry-run - the draft would be published as $TAG."

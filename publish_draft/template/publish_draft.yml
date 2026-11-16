@@ -1,0 +1,58 @@
+# Publishes the draft release by hand: Actions -> "Release: Publish Draft" -> Run workflow.
+# Pre-release = <version>-rc.N, release = <version>; both can bump the minor or major version first.
+# Documentation: https://github.com/A3-AZ/a3_workflows/tree/main/publish_draft
+#
+# Copy this file to .github/workflows/publish_draft.yml and create the secret RELEASE_TOKEN (see the README).
+
+name: "Release: Publish Draft"
+
+on:
+  workflow_dispatch:
+    inputs:
+      type:
+        description: Publish the draft as
+        type: choice
+        options: [pre-release, release]
+        default: pre-release
+      bump:
+        description: "Version: keep = the draft's, minor = x.Y+1.0, major = X+1.0.0"
+        type: choice
+        options: [keep, minor, major]
+        default: keep
+      dry-run:
+        description: Only show what would be published
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: publish_draft
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    name: Publish ${{ inputs.type }}
+    # The draft is refreshed from the branch the run starts on - only release from the default branch
+    if: github.ref_name == github.event.repository.default_branch
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write     # update and publish the draft release
+      pull-requests: read # draft_changelog reads the merged pull requests
+    steps:
+      # Brings the draft up to date (or creates it, e.g. right after a pre-release) - remove without draft_changelog
+      - name: Update the draft
+        id: changelog
+        uses: A3-AZ/a3_workflows/draft_changelog@v1
+
+      - name: Publish the draft
+        uses: A3-AZ/a3_workflows/publish_draft@v1
+        with:
+          type: ${{ inputs.type }}
+          bump: ${{ inputs.bump }}
+          dry-run: ${{ inputs.dry-run }}
+          draft-tag: ${{ steps.changelog.outputs.tag_name }}
+          # Without it the release does not start release_steam / release_github
+          token: ${{ secrets.RELEASE_TOKEN }}
+          # prerelease-identifier: rc
