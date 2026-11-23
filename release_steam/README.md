@@ -68,6 +68,7 @@ A file that does not exist leaves that field unchanged on Steam. Once a file exi
 | `steam-username` | yes | Steam account that is a contributor of the Workshop items |
 | `steam-password` | yes | Its password |
 | `discord-webhook` | no | Discord webhook URL, or up to 5 URLs separated by spaces, commas or newlines. Not passed = no announcement |
+| `arma3-tools-url` | no | Direct download URL of a zip with Arma 3 Tools, so HEMTT binarizes p3d/rtm/wrp files. Not passed = packed unbinarized, see [Binarization](#binarization) |
 
 ### Several Discord webhooks
 
@@ -81,6 +82,16 @@ The workflow splits the value into separate URLs, drops empty and duplicate ones
 
 The Steam account must have **Steam Guard disabled** - use a dedicated account. Secrets are passed explicitly in the wrapper; organization secrets work too, except for private repositories of an organization on the GitHub Free plan, where they arrive empty. The workflow checks the Steam secrets before it builds.
 
+### Binarization
+
+Without Arma 3 Tools on the runner, HEMTT packs `.p3d` models unbinarized (MLOD), without an error. The game then converts every model when it loads it: slower loading, and conversion warnings in the RPT (e.g. "Subskeleton index out of range" for skinned facewear) that a binarized model doesn't produce.
+
+With `arma3-tools-url`, the workflow installs the tools with [arma-actions/arma3-tools](https://github.com/arma-actions/arma3-tools) before the build. On the default Linux runner, HEMTT runs binarize through Wine. After the build, every `.p3d` in the PBOs is checked: with the tools set, a single unbinarized model fails the build before anything is uploaded; without them, unbinarized models only give a warning.
+
+The zip needs the folders `Binarize` and `BinMake` of an Arma 3 Tools installation at its root, with forward slashes in the paths (`tar -a -cf` on Windows, not PowerShell 5.1's `Compress-Archive`). `binarize_x64.exe` with its 64-bit DLLs is enough; leaving out `binarize.exe`, the `*_32.dll` files and `PhysXGpu_*.dll` brings the zip to about 18 MB.
+
+Host it where a plain HTTP GET returns the file: a Nextcloud share link with `/download` appended, a webspace folder, a storage bucket. Not a private GitHub release (needs a token), Google Drive or OneDrive (confirmation pages). The Arma 3 Tools are Bohemia Interactive's software, so keep the URL in a secret and the link unlisted.
+
 ## Permissions
 
 The wrapper must grant `contents: write` (to upload the zip to the release).
@@ -89,14 +100,14 @@ The wrapper must grant `contents: write` (to upload the zip to the release).
 
 - The Workshop items exist already, and the Steam account is a contributor of each.
 - The repository is a HEMTT project.
-- If the repository or organization restricts actions, allow `A3-AZ/*`, `arma-actions/hemtt@*` and `SethCohen/github-releases-to-discord@*`.
+- If the repository or organization restricts actions, allow `A3-AZ/*`, `arma-actions/hemtt@*`, `arma-actions/arma3-tools@*` and `SethCohen/github-releases-to-discord@*`.
 - Release tags start with `MAJOR.MINOR.PATCH`, optionally with a leading `v` and a suffix: `v1.2.3`, `1.2.3-rc1`.
 
 ## Installation
 
 1. Copy [`template/release_steam.yml`](template/release_steam.yml) to `.github/workflows/release_steam.yml` of your repository.
 2. Fill in `mod-folder`, `mod-name`, `workshop-id` and, if you have a dev item, `workshop-id-dev`.
-3. Create the secrets `STEAM_USERNAME`, `STEAM_PASSWORD` and, optionally, `DISCORD_WEBHOOK_URL` and/or `DISCORD_WEBHOOK_URL_EXTENDED`.
+3. Create the secrets `STEAM_USERNAME`, `STEAM_PASSWORD` and, optionally, `DISCORD_WEBHOOK_URL` and/or `DISCORD_WEBHOOK_URL_EXTENDED` and `ARMA3_TOOLS_URL` (see [Binarization](#binarization)).
 4. Optionally add `.steam/description.md` and `.steam/preview.png`.
 5. Remove the old release and Discord notice workflows, so a release is not published or announced twice.
 
@@ -107,3 +118,4 @@ The wrapper must grant `contents: write` (to upload the zip to the release).
 - `discord-webhook` accepts up to 5 URLs; the template passes `DISCORD_WEBHOOK_URL` and `DISCORD_WEBHOOK_URL_EXTENDED`.
 - The default Discord message text is now `<mod-name> Stable/Dev got updated - Version <version>.`, instead of `Stable Release!` / `Dev Release!`.
 - **Breaking:** `discord-content-stable` / `discord-content-dev` are renamed to `discord-message-stable` / `discord-message-dev`. A wrapper that still passes the old names fails.
+- Optional secret `arma3-tools-url`: installs Arma 3 Tools so HEMTT binarizes the models. Every build now checks its `.p3d` files: unbinarized ones fail the build when the tools are set, and only give a warning otherwise.
