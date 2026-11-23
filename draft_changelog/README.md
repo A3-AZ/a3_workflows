@@ -4,7 +4,7 @@ Composite action: [`action.yml`](action.yml)
 
 ## Purpose
 
-Keeps a draft GitHub release up to date with release notes built from the pull requests merged since the last release, sorted into sections by their labels. It wraps [release-drafter](https://github.com/release-drafter/release-drafter) (`@v7`). Publishing the draft is up to you - `release_steam` or `release_github` take over from there.
+Keeps a draft GitHub release up to date with release notes built from the pull requests merged since the last release, sorted into sections by their labels. It wraps [release-drafter](https://github.com/release-drafter/release-drafter) (`@v7`). Publishing the draft is up to you - by hand, or with [`publish_draft`](../publish_draft/README.md) - and `release_steam` or `release_github` take over from there.
 
 The release notes format lives in the mod repository (`.github/release-drafter.yml`), not here. This folder ships [`example/release-drafter.yml`](example/release-drafter.yml), which sorts pull requests by the `pr/*` labels:
 
