@@ -36,3 +36,5 @@ jobs:
       # optional - remove for no announcement. Either secret may be missing, e.g. one set on the
       # organization and the other on the repository. Every webhook gets the same message.
       discord-webhook: ${{ secrets.DISCORD_WEBHOOK_URL }} ${{ secrets.DISCORD_WEBHOOK_URL_EXTENDED }}
+      # optional - zip with Arma 3 Tools, so HEMTT binarizes the models. Without it they are packed unbinarized.
+      arma3-tools-url: ${{ secrets.ARMA3_TOOLS_URL }}

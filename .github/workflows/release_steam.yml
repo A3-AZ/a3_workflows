@@ -84,6 +84,9 @@ on:
       discord-webhook:
         description: Discord webhook URL, or up to 5 URLs separated by spaces, commas or newlines. Not set = no announcement.
         required: false
+      arma3-tools-url:
+        description: Direct download URL of a zip with the Arma 3 Tools folders Binarize and BinMake. Set = HEMTT binarizes p3d/rtm/wrp files and the build fails if a p3d stays unbinarized. Not set = no binarization, with a warning if the mod has p3d files.
+        required: false
 
 jobs:
   plan:
@@ -208,6 +211,26 @@ jobs:
             "$WORKSHOP_ID" "${NAME//\"/\"\"}" "$ticks" > meta.cpp
           cat meta.cpp
 
+      - name: Check for Arma 3 Tools
+        id: tools
+        env:
+          ARMA3_TOOLS_URL: ${{ secrets.arma3-tools-url }}
+        run: |
+          if [ -n "$ARMA3_TOOLS_URL" ]; then
+            echo "Arma 3 Tools URL set - HEMTT will binarize."
+            echo "set=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "No arma3-tools-url - HEMTT packs p3d/rtm/wrp files unbinarized."
+            echo "set=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      # On Linux the action unpacks the tools to ~/.local/share/arma3tools and installs wine64, which HEMTT uses to run binarize
+      - name: Install Arma 3 Tools
+        if: steps.tools.outputs.set == 'true'
+        uses: arma-actions/arma3-tools@7a1666b84a58503702f56319d8ffa975ec8a463e # master, 2025-02-04
+        with:
+          toolsUrl: ${{ secrets.arma3-tools-url }}
+
       - name: Setup HEMTT
         uses: arma-actions/hemtt@v1
         env:
@@ -230,6 +253,43 @@ jobs:
           hemtt release --no-archive
           mv .hemttout/release "$FOLDER"
           zip -qr "$FOLDER.zip" "$FOLDER"
+
+      # HEMTT silently packs p3d files unbinarized when it can't run binarize. The game then converts them on every load
+      # (slower, and the RPT fills with conversion warnings). With tools that must not happen; without, it's only a warning.
+      - name: Check p3d binarization
+        env:
+          TOOLS: ${{ steps.tools.outputs.set }}
+        shell: python3 {0}
+        run: |
+          import os, pathlib, struct, sys
+          total, mlod = 0, []
+          for pbo in sorted(pathlib.Path(os.environ["FOLDER"]).rglob("*.pbo")):
+              b = pbo.read_bytes()
+              o, entries = 0, []
+              while True:
+                  e = b.index(b"\0", o); name = b[o:e].decode("latin1"); o = e + 1
+                  mime, _, _, _, size = struct.unpack_from("<5I", b, o); o += 20
+                  if not name and mime == 0x56657273:  # "Vers" header entry, followed by key/value strings
+                      while True:
+                          e = b.index(b"\0", o); key = b[o:e]; o = e + 1
+                          if not key: break
+                          o = b.index(b"\0", o) + 1
+                      continue
+                  if not name: break
+                  entries.append((name, size))
+              for name, size in entries:
+                  if name.lower().endswith(".p3d"):
+                      total += 1
+                      if b[o:o + 4] == b"MLOD": mlod.append(f"{pbo.name}: {name}")
+                  o += size
+          print(f"{total} p3d files, {len(mlod)} not binarized")
+          for m in mlod: print(f"  {m}")
+          if not mlod:
+              sys.exit(0)
+          if os.environ["TOOLS"] == "true":
+              print(f"::error title=release_steam::{len(mlod)} of {total} p3d files were not binarized although arma3-tools-url is set. Check the HEMTT build log.")
+              sys.exit(1)
+          print(f"::warning title=release_steam::{len(mlod)} p3d files are packed unbinarized. The game converts them on every load. Set the arma3-tools-url secret to binarize them.")
 
       - name: Prepare Workshop metadata
         id: meta
